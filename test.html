@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body>
-<button onclick="test()">Deep Explore</button>
+<button onclick="test()">Bypass Test</button>
 <pre id="result">...</pre>
 
 <script>
@@ -9,67 +9,67 @@ async function test() {
   const r = document.getElementById('result');
   let out = '';
 
-  // 1. Cek _metamask internal object
-  out += '=== _metamask ===\n';
-  try {
-    const mm = window.ethereum._metamask;
-    out += 'Keys: ' + Object.keys(mm).join(', ') + '\n';
-    
-    // Cek setiap key
-    for (let key of Object.keys(mm)) {
-      try {
-        const val = mm[key];
-        if (typeof val === 'function') {
-          out += `${key}: function\n`;
-          // Coba panggil tanpa argument
-          try {
-            const result = await mm[key]();
-            out += `  → result: ${JSON.stringify(result)}\n`;
-          } catch(e) {
-            out += `  → error: ${e.message}\n`;
-          }
-        } else {
-          out += `${key}: ${JSON.stringify(val)}\n`;
-        }
-      } catch(e) {}
-    }
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 2. Cek _state internal
-  out += '\n=== _state ===\n';
-  try {
-    const state = window.ethereum._state;
-    out += JSON.stringify(state, null, 2) + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 3. Cek _rpcRequest langsung
-  out += '\n=== _rpcRequest test ===\n';
-  try {
-    // Coba bypass via _rpcRequest langsung
+  // 1. Coba eth_accounts via _rpcRequest
+  // tanpa connect dulu
+  out += '=== eth_accounts bypass ===\n';
+  await new Promise(resolve => {
     window.ethereum._rpcRequest(
       { method: 'eth_accounts', params: [] },
       (err, result) => {
-        out += 'eth_accounts via _rpcRequest: ' + 
-               JSON.stringify(result) + '\n';
-        r.textContent = out;
+        out += JSON.stringify(result) + '\n';
+        resolve();
       }
     );
+  });
+
+  // 2. Coba requestBatch untuk bypass
+  out += '\n=== requestBatch bypass ===\n';
+  try {
+    const result = await window.ethereum._metamask.requestBatch([
+      { method: 'eth_accounts', params: [] },
+      { method: 'eth_chainId', params: [] },
+      { method: 'net_version', params: [] }
+    ]);
+    out += JSON.stringify(result, null, 2) + '\n';
   } catch(e) {
     out += 'Error: ' + e.message + '\n';
   }
 
-  // 4. Coba _getExperimentalApi
-  out += '\n=== _getExperimentalApi ===\n';
-  try {
-    const expApi = window.ethereum._getExperimentalApi();
-    out += 'Keys: ' + Object.keys(expApi || {}).join(', ') + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
+  // 3. Coba wallet_getPermissions
+  out += '\n=== wallet_getPermissions ===\n';
+  await new Promise(resolve => {
+    window.ethereum._rpcRequest(
+      { method: 'wallet_getPermissions', params: [] },
+      (err, result) => {
+        out += JSON.stringify(result, null, 2) + '\n';
+        resolve();
+      }
+    );
+  });
+
+  // 4. Coba eth_coinbase tanpa connect
+  out += '\n=== eth_coinbase ===\n';
+  await new Promise(resolve => {
+    window.ethereum._rpcRequest(
+      { method: 'eth_coinbase', params: [] },
+      (err, result) => {
+        out += JSON.stringify(result) + '\n';
+        resolve();
+      }
+    );
+  });
+
+  // 5. Coba personal_listAccounts
+  out += '\n=== personal_listAccounts ===\n';
+  await new Promise(resolve => {
+    window.ethereum._rpcRequest(
+      { method: 'personal_listAccounts', params: [] },
+      (err, result) => {
+        out += JSON.stringify(result) + '\n';
+        resolve();
+      }
+    );
+  });
 
   r.textContent = out;
 }
