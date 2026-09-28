@@ -1,35 +1,48 @@
 <!DOCTYPE html>
 <html>
 <body>
-<button onclick="test()">Test MetaMask Access</button>
+<button onclick="test()">Test MetaMask</button>
 <pre id="result">...</pre>
 
 <script>
 async function test() {
-  const result = document.getElementById('result');
-  
+  const r = document.getElementById('result');
+  let out = '';
+
+  // 1. Cek semua property ethereum
+  out += '=== ethereum properties ===\n';
   try {
-    // Coba request akun
-    const accounts = await window.ethereum.request({
-      method: 'eth_requestAccounts'
-    });
-    result.textContent = 'Accounts: ' + accounts.join(', ');
-    
-    // Coba sign message
-    const msg = '0x' + Array.from(
-      new TextEncoder().encode('Test UXSS'),
-      b => b.toString(16).padStart(2, '0')
-    ).join('');
-    
-    const signature = await window.ethereum.request({
-      method: 'personal_sign',
-      params: [msg, accounts[0]]
-    });
-    result.textContent += '\nSignature: ' + signature;
-    
+    const props = Object.getOwnPropertyNames(
+      Object.getPrototypeOf(window.ethereum)
+    );
+    out += props.join('\n') + '\n';
   } catch(e) {
-    result.textContent = 'Error: ' + e.message;
+    out += 'Error: ' + e.message + '\n';
   }
+
+  // 2. Cek apakah ada internal methods
+  out += '\n=== All keys ===\n';
+  try {
+    for (let key in window.ethereum) {
+      out += key + ': ' + typeof window.ethereum[key] + '\n';
+    }
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
+
+  // 3. Cek selectedAddress (tanpa koneksi)
+  out += '\n=== selectedAddress ===\n';
+  out += window.ethereum.selectedAddress + '\n';
+
+  // 4. Cek chainId
+  out += '\n=== chainId ===\n';
+  out += window.ethereum.chainId + '\n';
+
+  // 5. Cek networkVersion
+  out += '\n=== networkVersion ===\n';
+  out += window.ethereum.networkVersion + '\n';
+
+  r.textContent = out;
 }
 </script>
 </body>
