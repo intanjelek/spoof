@@ -1,80 +1,22 @@
 <!DOCTYPE html>
 <html>
 <body>
-<button onclick="test()">Origin Confusion Test</button>
+<button onclick="test()">Test sendAsync Only</button>
 <pre id="result">...</pre>
-
 <script>
-async function test() {
+function test() {
   const r = document.getElementById('result');
-  let out = '';
-
-  // 1. Coba inject ethereum ke iframe
-  out += '=== iframe ethereum access ===\n';
-  try {
-    const iframe = document.createElement('iframe');
-    iframe.srcdoc = '<script>window.parent.postMessage(JSON.stringify(Object.keys(window.ethereum || {})), "*")<\/script>';
-    document.body.appendChild(iframe);
-    
-    window.addEventListener('message', e => {
-      out += 'iframe ethereum keys: ' + e.data + '\n';
-      r.textContent = out;
-    }, {once: true});
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 2. Coba window.open dan akses ethereum
-  out += '\n=== window.open ethereum ===\n';
-  try {
-    const tab = window.open('about:blank', '_blank');
-    setTimeout(() => {
-      try {
-        const hasEthereum = tab.ethereum !== undefined;
-        out += 'tab.ethereum exists: ' + hasEthereum + '\n';
-        r.textContent = out;
-      } catch(e) {
-        out += 'Error: ' + e.message + '\n';
-        r.textContent = out;
-      }
-    }, 500);
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 3. Coba sendAsync bypass
-  out += '\n=== sendAsync bypass ===\n';
   try {
     window.ethereum.sendAsync(
-      { method: 'eth_accounts', params: [], id: 1, jsonrpc: '2.0' },
+      { method: 'eth_accounts', params: [], 
+        id: 1, jsonrpc: '2.0' },
       (err, result) => {
-        out += 'sendAsync result: ' + JSON.stringify(result) + '\n';
-        r.textContent = out;
+        r.textContent = JSON.stringify(result);
       }
     );
   } catch(e) {
-    out += 'Error: ' + e.message + '\n';
+    r.textContent = 'Error: ' + e.message;
   }
-
-  // 4. Coba send (deprecated method)
-  out += '\n=== send bypass ===\n';
-  try {
-    const result = window.ethereum.send('eth_accounts');
-    out += 'send result: ' + JSON.stringify(result) + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 5. Coba enable() deprecated
-  out += '\n=== enable() ===\n';
-  try {
-    const result = await window.ethereum.enable();
-    out += 'enable result: ' + JSON.stringify(result) + '\n';
-  } catch(e) {
-    out += 'enable error: ' + e.message + '\n';
-  }
-
-  r.textContent = out;
 }
 </script>
 </body>
