@@ -1,116 +1,119 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>imToken Scanner</title>
-</head>
 <body>
-<button onclick="scan()">Scan imToken</button>
-<pre id="result">Klik Scan...</pre>
+<button onclick="scan()">Deep Scan</button>
+<pre id="result">...</pre>
 
 <script>
 async function scan() {
   const r = document.getElementById('result');
-  let out = '=== imToken Bridge Scanner ===\n\n';
+  let out = '';
 
-  // 1. Cek webkit message handlers
-  out += '--- webkit.messageHandlers ---\n';
+  // 1. ReactNativeWebView - PALING MENARIK!
+  out += '=== ReactNativeWebView ===\n';
   try {
-    const handlers = window.webkit?.messageHandlers;
-    if (handlers) {
-      // Coba nama yang umum di imToken
-      const names = [
-        'imToken', 'imtoken', 'ETHProvider',
-        'TokenProvider', 'callbackHandler',
-        'trustedMessageHandler', 'walletHandler',
-        '_imToken', 'imTokenHandler',
-        'dappBrowser', 'webview',
-        'native', 'bridge', 'jsbridge',
-        'JSBridge', 'wallet'
-      ];
-      names.forEach(name => {
-        try {
-          if (handlers[name]) {
-            out += `⚠️ FOUND: ${name}\n`;
-          } else {
-            out += `✅ Safe: ${name}\n`;
-          }
-        } catch(e) {}
-      });
-    } else {
-      out += 'webkit.messageHandlers: undefined\n';
+    const rnwv = window.ReactNativeWebView;
+    out += 'Keys: ' + Object.keys(rnwv).join(', ') + '\n';
+    
+    // Coba postMessage ke React Native
+    try {
+      rnwv.postMessage(JSON.stringify({
+        type: 'test',
+        payload: 'hello'
+      }));
+      out += '✅ postMessage sent!\n';
+    } catch(e) {
+      out += 'postMessage error: ' + e.message + '\n';
     }
   } catch(e) {
     out += 'Error: ' + e.message + '\n';
   }
 
-  // 2. Cek window providers
-  out += '\n--- window providers ---\n';
-  const providers = [
-    'ethereum', 'imToken', 'imTokenApi',
-    'callbackHandler', 'web3', 'Web3',
-    'trustwallet', 'TokenProvider',
-    'imTokenConnect', '_imToken',
-    'imtokenBridge', 'ETHProvider'
-  ];
-  providers.forEach(name => {
-    try {
-      if (window[name] !== undefined) {
-        out += `⚠️ FOUND: window.${name}\n`;
-        try {
-          const keys = Object.keys(window[name] || {});
-          out += `   Keys: ${keys.slice(0,8).join(', ')}\n`;
-        } catch(e) {}
-      }
-    } catch(e) {}
-  });
+  // 2. imToken.callAPI - SANGAT MENARIK!
+  out += '\n=== imToken.callAPI ===\n';
+  try {
+    const apis = [
+      'getAccounts', 'getAddress', 'getWallet',
+      'eth_accounts', 'eth_requestAccounts',
+      'wallet_getInfo', 'wallet_accounts',
+      'getUserInfo', 'getBalance',
+      'navigation.goBack', 'user.info',
+      'device.getInfo', 'app.getVersion'
+    ];
 
-  // 3. Cek ethereum detail
-  out += '\n--- ethereum detail ---\n';
-  if (window.ethereum) {
-    try {
-      out += `isMetaMask: ${window.ethereum.isMetaMask}\n`;
-      out += `isTrust: ${window.ethereum.isTrust}\n`;
-      out += `isImToken: ${window.ethereum.isImToken}\n`;
-      out += `isTokenPocket: ${window.ethereum.isTokenPocket}\n`;
-      out += `isOKExWallet: ${window.ethereum.isOKExWallet}\n`;
-      out += `chainId: ${window.ethereum.chainId}\n`;
-      out += `selectedAddress: ${window.ethereum.selectedAddress}\n`;
-      
-      // Cek semua keys
-      out += '\nAll keys:\n';
-      for (let key in window.ethereum) {
-        out += `  ${key}: ${typeof window.ethereum[key]}\n`;
+    for (const api of apis) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          window.imToken.callAPI(api, {}, 
+            (err, data) => err ? reject(err) : resolve(data)
+          );
+          setTimeout(() => resolve('timeout'), 1000);
+        });
+        out += `${api}: ${JSON.stringify(result)}\n`;
+      } catch(e) {
+        out += `${api}: error - ${e.message}\n`;
       }
-    } catch(e) {
-      out += 'Error: ' + e.message + '\n';
     }
-  } else {
-    out += 'window.ethereum: NOT FOUND\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
   }
 
-  // 4. Cek user agent
-  out += '\n--- User Agent ---\n';
-  out += navigator.userAgent + '\n';
-
-  // 5. Scan semua window object
-  out += '\n--- Suspicious window objects ---\n';
+  // 3. imToken.postMessage
+  out += '\n=== imToken.postMessage ===\n';
   try {
-    Object.keys(window).forEach(key => {
-      if (key.toLowerCase().includes('token') ||
-          key.toLowerCase().includes('wallet') ||
-          key.toLowerCase().includes('bridge') ||
-          key.toLowerCase().includes('native') ||
-          key.toLowerCase().includes('web3') ||
-          key.toLowerCase().includes('eth') ||
-          key.toLowerCase().includes('imtoken')) {
-        out += `⚠️ window.${key}: ${typeof window[key]}\n`;
-      }
+    window.imToken.postMessage(
+      JSON.stringify({method: 'getAccounts', id: 1})
+    );
+    out += 'postMessage sent!\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
+
+  // 4. btcwallet
+  out += '\n=== btcwallet ===\n';
+  try {
+    const btc = window.btcwallet;
+    out += 'Keys: ' + Object.keys(btc).join(', ') + '\n';
+    
+    // Coba get BTC accounts
+    if (btc.getAccounts) {
+      const accs = await btc.getAccounts();
+      out += 'BTC accounts: ' + JSON.stringify(accs) + '\n';
+    }
+    if (btc.requestAccounts) {
+      const accs = await btc.requestAccounts();
+      out += 'BTC requestAccounts: ' + JSON.stringify(accs) + '\n';
+    }
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
+
+  // 5. ImTokenEventEmitter
+  out += '\n=== ImTokenEventEmitter ===\n';
+  try {
+    const emitter = new window.ImTokenEventEmitter();
+    out += 'Keys: ' + Object.keys(emitter).join(', ') + '\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
+
+  // 6. ethereumProvider
+  out += '\n=== ethereumProvider ===\n';
+  try {
+    const ep = window.ethereumProvider;
+    out += 'Keys: ' + Object.keys(ep).join(', ') + '\n';
+    out += 'isImToken: ' + ep.isImToken + '\n';
+    
+    // Coba eth_accounts tanpa connect
+    const result = await ep.request({
+      method: 'eth_accounts'
     });
-  } catch(e) {}
+    out += 'eth_accounts: ' + JSON.stringify(result) + '\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
   r.textContent = out;
-
-  // Auto copy
   try {
     await navigator.clipboard.writeText(out);
     r.textContent += '\n[Copied!]';
