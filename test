@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Wallet Bridge Scanner</title>
+</head>
+<body>
+<h2>Wallet Bridge Scanner</h2>
+<button onclick="scan()">Scan</button>
+<pre id="result">Klik Scan...</pre>
+
+<script>
+function scan() {
+  const result = document.getElementById('result');
+  let output = '=== SCAN RESULT ===\n\n';
+
+  // 1. Cek webkit message handlers
+  output += '--- webkit.messageHandlers ---\n';
+  try {
+    const handlers = window.webkit?.messageHandlers;
+    if (handlers) {
+      const keys = Object.keys(handlers);
+      if (keys.length > 0) {
+        keys.forEach(k => output += `⚠️ FOUND: ${k}\n`);
+      } else {
+        // Coba nama yang umum
+        const common = [
+          '_tw_', 'metamask', 'trustwallet',
+          'coinbase', 'CBWalletProvider',
+          'rainbow', 'imToken', 'tokenpocket',
+          'bitkeep', 'okxwallet', 'phantom',
+          'solana', 'near', 'tronWeb',
+          'safePal', 'math', 'onto'
+        ];
+        common.forEach(name => {
+          if (handlers[name]) {
+            output += `⚠️ FOUND handler: ${name}\n`;
+          }
+        });
+      }
+    } else {
+      output += '✅ webkit.messageHandlers: undefined\n';
+    }
+  } catch(e) {
+    output += `Error: ${e.message}\n`;
+  }
+
+  // 2. Cek window provider objects
+  output += '\n--- window providers ---\n';
+  const providers = [
+    'ethereum', 'trustwallet', 'trustWallet',
+    'coinbaseWalletExtension', 'coinbase',
+    'rainbow', 'phantom', 'solana',
+    'imToken', 'tokenpocket', 'TokenPocket',
+    'bitkeep', 'BitKeep', 'okxwallet',
+    'OKExWalletProvider', 'mathwallet',
+    'safepalProvider', 'onto', 'tronWeb',
+    'BinanceChain', 'clover', 'xdefi',
+    'exodus', 'brave', 'core'
+  ];
+
+  providers.forEach(name => {
+    try {
+      if (window[name] !== undefined) {
+        const obj = window[name];
+        const methods = typeof obj === 'object' ? 
+          Object.keys(obj || {}).slice(0, 5).join(', ') : 
+          typeof obj;
+        output += `⚠️ FOUND: window.${name}\n`;
+        output += `   Methods: ${methods}\n`;
+      }
+    } catch(e) {}
+  });
+
+  // 3. Cek ethereum provider detail
+  output += '\n--- ethereum provider detail ---\n';
+  if (window.ethereum) {
+    try {
+      output += `Provider: ${window.ethereum.constructor?.name}\n`;
+      output += `isMetaMask: ${window.ethereum.isMetaMask}\n`;
+      output += `isTrust: ${window.ethereum.isTrust}\n`;
+      output += `isCoinbaseWallet: ${window.ethereum.isCoinbaseWallet}\n`;
+      output += `isRainbow: ${window.ethereum.isRainbow}\n`;
+      output += `isOKExWallet: ${window.ethereum.isOKExWallet}\n`;
+      output += `isBitKeep: ${window.ethereum.isBitKeep}\n`;
+      output += `isImToken: ${window.ethereum.isImToken}\n`;
+      output += `isTokenPocket: ${window.ethereum.isTokenPocket}\n`;
+    } catch(e) {}
+  } else {
+    output += 'window.ethereum: not found\n';
+  }
+
+  // 4. Cek user agent
+  output += '\n--- User Agent ---\n';
+  output += navigator.userAgent + '\n';
+
+  result.textContent = output;
+  
+  // Auto copy
+  try {
+    navigator.clipboard.writeText(output);
+    result.textContent += '\n\n[Copied to clipboard!]';
+  } catch(e) {}
+}
+</script>
+</body>
+</html>
