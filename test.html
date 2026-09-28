@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body>
-<button onclick="test()">Test MetaMask</button>
+<button onclick="test()">Deep Explore</button>
 <pre id="result">...</pre>
 
 <script>
@@ -9,38 +9,67 @@ async function test() {
   const r = document.getElementById('result');
   let out = '';
 
-  // 1. Cek semua property ethereum
-  out += '=== ethereum properties ===\n';
+  // 1. Cek _metamask internal object
+  out += '=== _metamask ===\n';
   try {
-    const props = Object.getOwnPropertyNames(
-      Object.getPrototypeOf(window.ethereum)
-    );
-    out += props.join('\n') + '\n';
-  } catch(e) {
-    out += 'Error: ' + e.message + '\n';
-  }
-
-  // 2. Cek apakah ada internal methods
-  out += '\n=== All keys ===\n';
-  try {
-    for (let key in window.ethereum) {
-      out += key + ': ' + typeof window.ethereum[key] + '\n';
+    const mm = window.ethereum._metamask;
+    out += 'Keys: ' + Object.keys(mm).join(', ') + '\n';
+    
+    // Cek setiap key
+    for (let key of Object.keys(mm)) {
+      try {
+        const val = mm[key];
+        if (typeof val === 'function') {
+          out += `${key}: function\n`;
+          // Coba panggil tanpa argument
+          try {
+            const result = await mm[key]();
+            out += `  → result: ${JSON.stringify(result)}\n`;
+          } catch(e) {
+            out += `  → error: ${e.message}\n`;
+          }
+        } else {
+          out += `${key}: ${JSON.stringify(val)}\n`;
+        }
+      } catch(e) {}
     }
   } catch(e) {
     out += 'Error: ' + e.message + '\n';
   }
 
-  // 3. Cek selectedAddress (tanpa koneksi)
-  out += '\n=== selectedAddress ===\n';
-  out += window.ethereum.selectedAddress + '\n';
+  // 2. Cek _state internal
+  out += '\n=== _state ===\n';
+  try {
+    const state = window.ethereum._state;
+    out += JSON.stringify(state, null, 2) + '\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
-  // 4. Cek chainId
-  out += '\n=== chainId ===\n';
-  out += window.ethereum.chainId + '\n';
+  // 3. Cek _rpcRequest langsung
+  out += '\n=== _rpcRequest test ===\n';
+  try {
+    // Coba bypass via _rpcRequest langsung
+    window.ethereum._rpcRequest(
+      { method: 'eth_accounts', params: [] },
+      (err, result) => {
+        out += 'eth_accounts via _rpcRequest: ' + 
+               JSON.stringify(result) + '\n';
+        r.textContent = out;
+      }
+    );
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
-  // 5. Cek networkVersion
-  out += '\n=== networkVersion ===\n';
-  out += window.ethereum.networkVersion + '\n';
+  // 4. Coba _getExperimentalApi
+  out += '\n=== _getExperimentalApi ===\n';
+  try {
+    const expApi = window.ethereum._getExperimentalApi();
+    out += 'Keys: ' + Object.keys(expApi || {}).join(', ') + '\n';
+  } catch(e) {
+    out += 'Error: ' + e.message + '\n';
+  }
 
   r.textContent = out;
 }
