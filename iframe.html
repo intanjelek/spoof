@@ -1,2 +1,6 @@
-<!DOCTYPE html><body>inner
-<script>setTimeout(function(){ location.href="geo:0,0"; },500);</script>
+<!DOCTYPE html><body>inner frame
+<script>
+  // coba trigger dari dalam subframe (hanya jalan kalau same-origin dengan dirinya)
+  setTimeout(function(){ location.href = "tel:+100000000"; }, 600);
+</script>
+</body>
