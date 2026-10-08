@@ -1,12 +1,23 @@
 <!DOCTYPE html><body style="font-family:Arial;text-align:center">
 <p>IFRAME = origin B</p>
 <p id="io"></p>
-<button id="b" style="font-size:16px;padding:10px">Tap (open tel: from inside iframe)</button>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:300px;margin:auto">
+  <button onclick="go('tel:+10000000')">tel: (Phone)</button>
+  <button onclick="go('mailto:test@example.com')">mailto: (Mail)</button>
+  <button onclick="go('sms:+10000000')">sms: (Messages)</button>
+  <button onclick="go('facetime:test@example.com')">facetime:</button>
+  <button onclick="go('maps://?q=test')">maps:// (Apple Maps)</button>
+  <button onclick="go('http://maps.apple.com/?q=test')">maps.apple.com (Maps)</button>
+  <button onclick="go('itms-apps://itunes.apple.com')">itms-apps:// (App Store)</button>
+  <button onclick="go('foobar://test')">foobar:// (custom/unknown)</button>
+</div>
+<pre id="log"></pre>
 <script>
   document.getElementById('io').textContent = 'iframe origin = ' + location.origin;
-  // navigation initiated INSIDE the iframe → sourceFrame = this iframe
-  document.getElementById('b').onclick = function(){
-    location.href = 'tel:+100000000';   // also try: 'mailto:x@x.com', 'sms:+1', 'geo:0,0'
-  };
+  function go(scheme){
+    document.getElementById('log').textContent =
+      'navigasi (dari iframe): ' + scheme + '\n>>> PERHATIKAN ADDRESS BAR';
+    location.href = scheme;   // dipicu DARI DALAM iframe → sourceFrame = iframe
+  }
 </script>
 </body>
