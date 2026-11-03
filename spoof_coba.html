@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Address Bar Trust Probe</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 18px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 16px; }
+  .card { border: 1px solid #ccc; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .banner { border-left: 4px solid #c60; background: #fff8ef; color: #553; }
+  button { display: block; width: 100%; padding: 14px; margin: 8px 0;
+           font: 600 15px system-ui; border: 1px solid #999; border-radius: 8px;
+           background: #f4f4f4; cursor: pointer; text-align: left; }
+  button:active { background: #e4e4e4; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; }
+  #log { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+         white-space: pre-wrap; word-break: break-all; background: #f0f0f0;
+         padding: 10px; border-radius: 6px; min-height: 60px; }
+  .hint { font-size: 12px; color: #777; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Address Bar Trust Probe</h1>
+<div class="sub">Diagnostic harness for iOS WKWebView omnibox / committed-item trust. Neutral placeholder host only. No credential UI.</div>
+
+<div class="card banner">
+  <b>How to read this:</b> each test navigates this tab to a document whose
+  <b>real origin is shown on screen</b>. Compare the <b>address bar</b> to the
+  on-screen <code>location.href</code>. They should match (or the bar should
+  clearly show the non-standard scheme, e.g. <code>blob:</code>). Record any case
+  where the bar shows a bare host while the on-screen origin differs or is
+  non-standard — that is the reportable divergence. Screenshot bar + screen together.
+</div>
+
+<div class="card">
+  <b>Current document state</b>
+  <div id="log">reading…</div>
+</div>
+
+<div class="card">
+  <b>Tests</b> (each leaves this page; use back button to return)
+  <button onclick="navBlob()">1 · Commit a blob: document (own origin)</button>
+  <button onclick="navBlobNull()">2 · Commit a blob:null document (opaque, via sandbox)</button>
+  <button onclick="navData()">3 · Commit a data: document</button>
+  <button onclick="navFilesystem()">4 · Attempt filesystem: navigation</button>
+  <button onclick="navMalformed()">5 · Malformed host regression (CVE-2016-1707 class, neutral host)</button>
+  <div class="hint">Host used for placeholder comparisons: <code>example.com</code> — substitute mentally for any target when assessing display.</div>
+</div>
+
+<script>
+// ---- self-report: render this document's real, observable origin state ----
+(function report() {
+  var el = document.getElementById('log');
+  if (!el) return;
+  var lines = [
+    'location.href   = ' + location.href,
+    'document.URL    = ' + document.URL,
+    'window.origin   = ' + (window.origin || '(opaque/undefined)'),
+    'document.domain = ' + (document.domain || '(empty)'),
+  ];
+  el.textContent = lines.join('\n');
+})();
+
+// ---- generated document body: self-reports its own location on screen ----
+function reportDoc(label) {
+  return '<!doctype html><meta charset=utf-8><meta name=viewport ' +
+    'content="width=device-width,initial-scale=1">' +
+    '<body style="font:15px/1.5 system-ui;margin:0;padding:18px">' +
+    '<div style="border-left:4px solid #06c;background:#eef5ff;padding:14px;border-radius:8px">' +
+    '<b>Committed document: ' + label + '</b>' +
+    '<p style="font-size:13px;color:#555">Compare the address bar above to this ' +
+    'document\'s real origin below. Record a divergence if the bar shows a bare ' +
+    'trusted-looking host while this says otherwise.</p>' +
+    '<pre id=o style="font-family:ui-monospace,Menlo,monospace;font-size:12px;' +
+    'white-space:pre-wrap;word-break:break-all;background:#f0f0f0;padding:10px;' +
+    'border-radius:6px"></pre></div>' +
+    '<scr' + 'ipt>document.getElementById("o").textContent=' +
+    '"location.href   = "+location.href+"\\n"+' +
+    '"window.origin   = "+(window.origin||"(opaque)")+"\\n"+' +
+    '"document.domain = "+(document.domain||"(empty)");' +
+    '</scr' + 'ipt>';
+}
+
+function navBlob() {
+  var u = URL.createObjectURL(new Blob([reportDoc('blob: (own origin)')], {type:'text/html'}));
+  location.href = u;
+}
+
+function navBlobNull() {
+  // A sandboxed iframe without allow-same-origin has an opaque origin; a blob
+  // it creates is blob:null/... Navigate top to it to observe opaque commit.
+  var f = document.createElement('iframe');
+  f.sandbox = 'allow-scripts';
+  f.srcdoc = '<scr'+'ipt>var u=URL.createObjectURL(new Blob(["opaque blob doc"],' +
+             '{type:"text/html"}));parent.postMessage(u,"*");</scr'+'ipt>';
+  f.style.display = 'none';
+  window.addEventListener('message', function onMsg(e){
+    window.removeEventListener('message', onMsg);
+    document.getElementById('log').textContent =
+      'blob:null candidate = ' + e.data + '\n(navigating…)';
+    try { location.href = e.data; } catch(err) {
+      document.getElementById('log').textContent = 'navigation threw: ' + err;
+    }
+  });
+  document.body.appendChild(f);
+}
+
+function navData() {
+  location.href = 'data:text/html,' + encodeURIComponent(reportDoc('data:'));
+}
+
+function navFilesystem() {
+  // filesystem: is largely removed; this logs whether navigation is even accepted.
+  var url = 'filesystem:' + location.origin + '/temporary/probe';
+  document.getElementById('log').textContent = 'attempting: ' + url;
+  try { location.href = url; } catch(e) {
+    document.getElementById('log').textContent = 'filesystem nav threw: ' + e;
+  }
+}
+
+function navMalformed() {
+  // Regression check for the CVE-2016-1707 invalid-URL-commit class.
+  // Neutral host; observe whether a malformed authority is committed/promoted.
+  var url = 'https://example.com::/';
+  document.getElementById('log').textContent = 'attempting malformed: ' + url;
+  try {
+    var a = document.createElement('a');
+    a.href = url; a.textContent = 'go';
+    document.body.appendChild(a);
+    a.click();
+  } catch(e) {
+    document.getElementById('log').textContent = 'malformed nav threw: ' + e;
+  }
+}
+</script>
+</body>
+</html>
