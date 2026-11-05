@@ -1,0 +1,77 @@
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>handler prober</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:14px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+ .hit{color:#0a0;font-weight:700}
+ .warn{color:#b23;font-size:11px}
+ button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:6px 0}
+</style>
+</head>
+<body>
+<h1>Meta IAB — native handler existence prober</h1>
+<p style="font-size:12px;color:#666">SAFE: only checks whether <code>window.webkit.messageHandlers[name]</code>
+exists (property access). It does NOT call <code>.postMessage</code>, so no native action is triggered.
+Open inside the Instagram/Facebook in-app browser.</p>
+
+<h2>registered handlers found (truthy messageHandlers[name])</h2><pre id="hits"></pre>
+<h2>autofill / pcm bridge globals present THIS load</h2><pre id="af"></pre>
+<h2>all candidate results</h2><pre id="all"></pre>
+
+<p>probe a custom name:</p>
+<input id="custom" placeholder="handlerName">
+<button onclick="probeCustom()">check custom name (existence only)</button>
+<pre id="customout"></pre>
+
+<button onclick="run()">re-scan</button>
+<p class="warn">Existence check only. Do NOT postMessage to unknown handlers — that invokes native code.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var CANDIDATES = [
+ // generic IAB / meta bridge method names
+ 'iabjs_unified_bridge','IABLogger','IABLogging','logging','scribe','ScribeLogger','IABScribe',
+ 'navigation','navigate','openURL','openExternalURL','openInExternalBrowser','openInDefaultBrowser',
+ 'close','closeTab','share','shareLink','copyLink','copyToClipboard','clipboard',
+ 'autofill','Autofill','IABAutofill','autofillBridge','requestAutofill','fillForm','getAutofillData',
+ 'autofillRequest','AutofillAPIBridge','IABAutofillAPIBridge','autofillSave','autofillSubmit',
+ 'pcm','PCM','pcmBridge','privateClickMeasurement','trackClick','clickMeasurement',
+ 'pageLoad','pageView','formInteraction','formSubmit','inputFocus','getMetadata','getContextualInfo',
+ 'IABContextualInfo','contextualInfo','prefetch','reportLink','report','download','downloadFile',
+ 'saveImage','saveMedia','savePhoto','permission','requestPermission','geolocation','camera',
+ 'MessengerExtensions','FBQuip','browserDeclutter','declutter','translate','readerMode',
+ 'IABInnerFrame','innerFrame','consoleLog','log','metrics','perf','performance','loaf',
+ 'paymentAutofill','creditCard','address','contactAutofill','passwordAutofill'
+];
+
+function exists(name){
+  try{
+    if(!(window.webkit && window.webkit.messageHandlers)) return 'no-webkit';
+    var h = window.webkit.messageHandlers[name];       // property access only — NO postMessage
+    return (h!==undefined && h!==null) ? ('EXISTS ('+typeof h+')') : 'absent';
+  }catch(e){ return 'err '+e; }
+}
+
+function run(){
+  var hits=[], all=[];
+  CANDIDATES.forEach(function(n){ var r=exists(n); all.push(n+' : '+r); if(/EXISTS/.test(r)) hits.push(n+' : '+r); });
+  g('hits').innerHTML = hits.length? hits.map(function(h){return '<span class=hit>'+h+'</span>';}).join('\n') : '(none truthy — but remember messageHandlers is non-enumerable; names must be exact)'
+;
+  g('all').textContent = all.join('\n');
+
+  var af=[]; for(var k in window){ try{ if(/autofill|pcm|iab/i.test(k)){ af.push(k+' : '+typeof window[k]); } }catch(e){} }
+  g('af').textContent = af.length? af.join('\n') : '(none this load)';
+}
+function probeCustom(){
+  var n=(g('custom').value||'').trim(); if(!n){ g('customout').textContent='enter a name'; return; }
+  g('customout').textContent = n+' : '+exists(n);
+}
+run();
+</script>
+</body>
+</html>
