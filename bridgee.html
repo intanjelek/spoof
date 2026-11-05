@@ -3,96 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bridge logger v2</title>
+<title>Checkout</title>
 <style>
- body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
- h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}p{font-size:12px;color:#666}
- pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
- button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ input{width:100%;padding:11px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin:5px 0}
+ iframe{width:100%;height:300px;border:2px solid #c0392b;border-radius:8px}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
  .warn{color:#b23;font-size:11px}
- .big{height:160vh;background:linear-gradient(#fff,#eee)}
+ p{font-size:12px;color:#666}
 </style>
 </head>
 <body>
-<h1>Meta IAB — bridge logger v2 (safe, no Proxy)</h1>
-<p>Hooks the bridge dispatcher + native callbacks and LOGS what IG's own scripts call. No Proxy on
-messageHandlers (that caused the iOS hang). Observe-only — does not initiate native calls. Works on
-iOS &amp; Android in-app browsers. On ANDROID the unified bridge is usually LIVE
-(<code>window.iabjs_unified_bridge</code> present).</p>
+<h1>Benign cross-origin autofill-broadcast test</h1>
+<p>Authorized research, own IG test account + FAKE saved card (<b>4111 1111 1111 1111</b>). This TOP
+page is one origin; the red iframe below is a DIFFERENT origin. Trigger IG payment autofill on the
+fields; watch whether the cross-origin iframe receives the autofill VALUES (= cross-origin leak).</p>
 
-<h2>environment + native bridge presence</h2><pre id="env"></pre>
-<h2>window.iabjs_unified_bridge (Android native bridge)</h2><pre id="aib"></pre>
-<h2>Android @JavascriptInterface-style globals (objects w/ methods)</h2><pre id="aidl"></pre>
-<h2>live log (bridge calls + callbacks)</h2><pre id="log"></pre>
+<h2>payment form — tap a field, accept IG autofill</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input name="ccname" autocomplete="cc-name" placeholder="name on card">
+ <input name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="card number">
+ <input name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY">
+ <input name="cvc" autocomplete="cc-csc" inputmode="numeric" placeholder="CVC">
+</form>
 
-<button onclick="interact()">simulate interaction (scroll/tap/resize)</button>
-<p>scroll this long area to trigger IG bridge usage:</p><div class="big"></div>
-<p class="warn">Observe-only.</p>
+<h2>contact form</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input name="name" autocomplete="name" placeholder="full name">
+ <input name="street-address" autocomplete="street-address" placeholder="address">
+ <input name="tel" autocomplete="tel" inputmode="tel" placeholder="phone">
+</form>
+
+<h2>CROSS-ORIGIN iframe (umar1105.github.io) — watch what it receives</h2>
+<!-- change src to your SECOND origin hosting iab_xorigin_listener.html -->
+<iframe id="xf" src="https://umar1105.github.io/iab_xorigin_listener.html"></iframe>
+
+<h2>top-page log</h2><pre id="log"></pre>
+<p class="warn">Own account + FAKE card only. Prove capability (fake card appears cross-origin), not real data.</p>
 
 <script>
-function g(id){return document.getElementById(id);}
-var L=g('log'); function log(m){ try{ L.textContent += m + '\n'; }catch(e){} }
-function safe(x){ try{return JSON.stringify(x).slice(0,600);}catch(e){try{return String(x).slice(0,300);}catch(_){return '(unser)';}} }
-function keys(o){ try{return Object.getOwnPropertyNames(o).join(', ');}catch(e){return '(err '+e+')';} }
-
-// env
-try{
- g('env').textContent =
-  'UA='+navigator.userAgent+'\n'+
-  'IG='+/Instagram/i.test(navigator.userAgent)+'  FB='+/FBAN|FBAV|FB_IAB/i.test(navigator.userAgent)+'\n'+
-  'origin='+location.origin+'\n'+
-  'window.iabjs_unified_bridge = '+(typeof window.iabjs_unified_bridge)+'\n'+
-  'window.webkit.messageHandlers = '+((window.webkit&&window.webkit.messageHandlers)?'present':'absent')+'\n'+
-  '__call_iabjs_unified_bridge = '+(typeof window.__call_iabjs_unified_bridge)+'\n'+
-  'nonce = '+String(window.__iabjs_unified_bridge_nonce);
-}catch(e){ g('env').textContent='env err '+e; }
-
-// Android native bridge object
-try{
- g('aib').textContent = (typeof window.iabjs_unified_bridge!=='undefined')
-   ? 'type='+typeof window.iabjs_unified_bridge+'\nmembers: '+keys(window.iabjs_unified_bridge)
-   : '(absent — likely iOS, bridge no-op)';
-}catch(e){ g('aib').textContent='err '+e; }
-
-// Android @JavascriptInterface globals: injected as window.X objects with native functions.
-try{
- var out=[];
- for(var k in window){ try{
-   var v=window[k];
-   if(v && typeof v==='object' && !(/^(window|document|location|navigator|history|screen|console)$/.test(k))){
-     var kn=''; try{kn=Object.getOwnPropertyNames(v).join(',');}catch(_){}
-     // native interface objects often have functions and a short member list
-     if(/bridge|iab|fb|native|interface|android|_i_|messenger|autofill|pcm/i.test(k) || /postMessage|callNative|invoke|exec/i.test(kn)){
-       out.push(k+' : object { '+kn.slice(0,200)+' }');
-     }
-   } else if(typeof v==='function' && /bridge|iab|native|exec|invoke/i.test(k)){
-     out.push(k+' : fn');
-   }
- }catch(e){} }
- g('aidl').textContent = out.length? out.join('\n') : '(none obvious)';
-}catch(e){ g('aidl').textContent='err '+e; }
-
-// Hook the dispatcher (captures real method names + payloads)
-try{
- if(typeof window.__call_iabjs_unified_bridge==='function'){
-   var orig=window.__call_iabjs_unified_bridge;
-   window.__call_iabjs_unified_bridge=function(method,nonce,payload){
-     try{ log('BRIDGE CALL  method='+method+'  nonce='+nonce+'  payload='+safe(payload)); }catch(e){}
-     try{ return orig.apply(this,arguments); }catch(e){ log('orig err '+e); }
-   };
-   log('hooked __call_iabjs_unified_bridge');
- } else log('__call_iabjs_unified_bridge not a function');
-}catch(e){ log('hook1 err '+e); }
-
-// Hook native->page callbacks
-['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(name){
- try{ if(typeof window[name]==='function'){ var o=window[name];
-   window[name]=function(){ try{ log('CALLBACK '+name+' <= '+safe([].slice.call(arguments))); }catch(e){} try{return o.apply(this,arguments);}catch(e){ log(name+' err '+e);} };
-   log('hooked '+name);
- } }catch(e){}
-});
-
-function interact(){ try{ window.scrollTo(0,400); window.dispatchEvent(new Event('resize')); document.body.click(); log('dispatched scroll/resize/click'); }catch(e){ log('interact err '+e); } }
+ var L=document.getElementById('log');
+ function log(m){ L.textContent = m + '\n' + L.textContent; }
+ log('top origin = '+location.origin+'  IG='+/Instagram/i.test(navigator.userAgent));
+ window.addEventListener('message', function(e){
+   try{ if(e.data && e.data.__listener==='ready'){ log('cross-origin listener ready @ '+e.data.origin); return; } }catch(_){}
+ });
+ log('When you accept IG payment autofill, check the RED iframe above: if it shows the card/contact VALUES, that is a cross-origin autofill leak.');
 </script>
 </body>
 </html>
