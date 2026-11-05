@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bridge introspect v2</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:14px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ .warn{color:#b23;font-size:11px}
+ button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+</style>
+</head>
+<body>
+<h1>Meta IAB bridge — introspection v2 (robust, no native calls)</h1>
+<p style="font-size:12px;color:#666">Per-section try/catch, no JSON.stringify. Open inside the
+Instagram/Facebook in-app browser. Reads definitions only — does NOT call native bridges.</p>
+
+<h2>__iabjs (keys + members)</h2><pre id="iabjs"></pre>
+<h2>__call_iabjs_unified_bridge (full source)</h2><pre id="unified"></pre>
+<h2>_AutofillCallbackHandler (full source)</h2><pre id="autofill"></pre>
+<h2>all *autofill* / *IAB* globals (name : type : snippet)</h2><pre id="afglobals"></pre>
+<h2>_pcmBridgeCallbackHandler (source)</h2><pre id="pcm"></pre>
+<h2>innerFramePageLocale / browserDeclutter / _META</h2><pre id="misc"></pre>
+<h2>nonces + autofillWindowId</h2><pre id="nonces"></pre>
+
+<button onclick="run()">re-scan</button>
+<p class="warn">Introspection only. Do NOT call unknown bridges yet.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+function safe(id, fn){ try{ var r=fn(); g(id).textContent = (r===undefined||r===null||r==='')?'(empty)':String(r); }catch(e){ g(id).textContent='ERROR: '+e; } }
+function fsrc(fn){ try{ return (typeof fn==='function')? fn.toString() : '(type '+typeof fn+')'; }catch(e){ return '(toString err '+e+')'; } }
+
+function dumpObj(o, snippetLen){
+  snippetLen = snippetLen||300;
+  var names;
+  try{ names = Object.getOwnPropertyNames(o); }catch(e){ return 'getOwnPropertyNames err: '+e; }
+  if(!names.length) return '(no own properties)';
+  var lines = ['keys: '+names.join(', '), ''];
+  names.forEach(function(k){
+    var line;
+    try{
+      var v = o[k], t = typeof v;
+      if(t==='function'){ var s; try{ s=v.toString(); }catch(_){ s='(toString err)'; } line = k+' : fn => '+s.slice(0,snippetLen).replace(/\s+/g,' '); }
+      else if(t==='object' && v){ var kk; try{ kk=Object.getOwnPropertyNames(v).join(','); }catch(_){ kk='(err)'; } line = k+' : object { '+kk.slice(0,240)+' }'; }
+      else { line = k+' : '+t+' = '+String(v).slice(0,240); }
+    }catch(e){ line = k+' : (access err '+e+')'; }
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
+
+function run(){
+  safe('iabjs', function(){ return (typeof window.__iabjs==='undefined')?'(absent)':dumpObj(window.__iabjs, 400); });
+  safe('unified', function(){ return (typeof window.__call_iabjs_unified_bridge==='undefined')?'(absent)':fsrc(window.__call_iabjs_unified_bridge); });
+  safe('autofill', function(){ return (typeof window._AutofillCallbackHandler==='undefined')?'(absent)':fsrc(window._AutofillCallbackHandler); });
+  safe('afglobals', function(){
+    var out=[]; for(var k in window){ try{ if(/autofill|iab/i.test(k)){ var v=window[k], t=typeof v, snip = (t==='function')? v.toString().slice(0,160).replace(/\s+/g,' ') : String(v).slice(0,160); out.push(k+' : '+t+' : '+snip); } }catch(e){ out.push(k+' : (err)'); } }
+    return out.length? out.join('\n') : '(none)';
+  });
+  safe('pcm', function(){ return (typeof window._pcmBridgeCallbackHandler==='undefined')?'(absent)':fsrc(window._pcmBridgeCallbackHandler); });
+  safe('misc', function(){
+    return 'innerFramePageLocale: '+fsrc(window.innerFramePageLocale)+'\n\n'+
+      'browserDeclutter: '+((typeof window.browserDeclutter!=='undefined')?dumpObj(window.browserDeclutter,160):'(absent)')+'\n\n'+
+      '_META: '+((typeof window._META!=='undefined')?dumpObj(window._META,160):'(absent)');
+  });
+  safe('nonces', function(){
+    var n=[]; ['__iabjs_unified_bridge_nonce','_PCMNonce','autofillWindowId','__IABAutofillAlreadyInitialized','__IABAutofillAPIBridgeAlreadyInitialized'].forEach(function(k){ try{ if(typeof window[k]!=='undefined') n.push(k+' = '+String(window[k])); }catch(e){} });
+    return n.length? n.join('\n') : '(none)';
+  });
+}
+run();
+</script>
+</body>
+</html>
