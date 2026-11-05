@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>webview recon</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.5;color:#111}
+ h1{font-size:17px}h2{font-size:13px;margin:14px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+ .warn{color:#b23;font-size:11px}
+ button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+</style>
+</head>
+<body>
+<h1>Meta in-app WebView — bridge recon (benign)</h1>
+<p style="font-size:12px;color:#666">Authorized research. ENUMERATION only — lists injected
+bridges/globals; it does NOT call unknown native handlers and reads no user data. Open this page
+inside the Facebook / Instagram in-app browser (DM the link to yourself, then tap it).</p>
+
+<h2>environment</h2><pre id="env"></pre>
+<h2>iOS WKWebView message handlers (window.webkit.messageHandlers)</h2><pre id="wk"></pre>
+<h2>suspicious / non-standard window globals (possible Android @JavascriptInterface)</h2><pre id="glob"></pre>
+<h2>injected markers &amp; bridge-ish objects</h2><pre id="inj"></pre>
+
+<button onclick="recheck()">re-scan</button>
+<p class="warn">Do not call unknown bridges blindly — some trigger native actions. This page only lists them.</p>
+
+<script>
+function txt(id,s){document.getElementById(id).textContent=s;}
+function list(obj){try{return Object.getOwnPropertyNames(obj).sort().join(', ');}catch(e){return '(err '+e+')';}}
+
+function recheck(){
+  // environment
+  txt('env',
+    'userAgent = '+navigator.userAgent+'\n'+
+    'in FB app  = '+/FBAN|FBAV|FB_IAB|FBIOS/i.test(navigator.userAgent)+'\n'+
+    'in IG app  = '+/Instagram/i.test(navigator.userAgent)+'\n'+
+    'location.href = '+location.href+'\n'+
+    'origin = '+location.origin+'  document.domain = '+document.domain+'\n'+
+    'platform = '+navigator.platform+'  vendor='+navigator.vendor);
+
+  // iOS message handlers
+  var wk = '(none / not iOS WKWebView)';
+  try{
+    if(window.webkit && window.webkit.messageHandlers){
+      wk = 'messageHandlers keys: '+list(window.webkit.messageHandlers);
+    }
+  }catch(e){ wk='err '+e; }
+  txt('wk', wk);
+
+  // non-standard window globals (filter common ones; Android JS interfaces appear here)
+  var common = new Set(['window','self','document','name','location','customElements','history',
+    'navigation','locationbar','menubar','personalbar','scrollbars','statusbar','toolbar','status',
+    'closed','frames','length','top','opener','parent','frameElement','navigator','origin',
+    'external','screen','innerWidth','innerHeight','scrollX','scrollY','pageXOffset','pageYOffset',
+    'screenX','screenY','screenLeft','screenTop','styleMedia','onsearch','isSecureContext',
+    'performance','onappinstalled','onbeforeinstallprompt','crypto','indexedDB','sessionStorage',
+    'localStorage','onbeforexrselect','ondevicemotion','ondeviceorientation','visualViewport',
+    'speechSynthesis','webkit','chrome','caches','cookieStore','documentPictureInPicture',
+    'getComputedStyle','matchMedia','moveTo','moveBy','resizeTo','resizeBy','scroll','scrollTo',
+    'scrollBy','getSelection','print','focus','blur','open','close','stop','alert','confirm',
+    'prompt','postMessage','fetch','btoa','atob','setTimeout','clearTimeout','setInterval',
+    'clearInterval','queueMicrotask','requestAnimationFrame','cancelAnimationFrame','requestIdleCallback',
+    'cancelIdleCallback','structuredClone','reportError','TEMPORARY','PERSISTENT','addEventListener',
+    'removeEventListener','dispatchEvent','GPUBufferUsage','gc']);
+  var found=[];
+  try{
+    for(var k in window){ try{ if(!common.has(k) && !(k in {})){ found.push(k+' ('+(typeof window[k])+')'); } }catch(e){} }
+  }catch(e){}
+  txt('glob', found.length? found.join('\n') : '(nothing obviously non-standard)');
+
+  // injected markers / bridge-ish names
+  var hints=['_FB','_fb','fb','FB','IG','ig','instagram','facebook','iab','IAB','bridge','Bridge',
+    'JSBridge','jsBridge','__fbNativeBridge','FBMsgr','webkit','prompt','MessengerExtensions',
+    'FbQuip','ScribeLogger','pcmBridge','FBIAB','_cross','getMetaData'];
+  var hit=[];
+  hints.forEach(function(n){ try{ if(typeof window[n]!=='undefined'){ hit.push(n+' = '+(typeof window[n])+' keys['+list(window[n]).slice(0,120)+']'); } }catch(e){} });
+  // also deep-list webkit.messageHandlers entries' type
+  try{ if(window.webkit&&window.webkit.messageHandlers){ Object.getOwnPropertyNames(window.webkit.messageHandlers).forEach(function(h){ hit.push('mh.'+h+' = '+(typeof window.webkit.messageHandlers[
+h])); }); } }catch(e){}
+  txt('inj', hit.length? hit.join('\n') : '(no known bridge markers found)');
+}
+recheck();
+</script>
+</body>
+</html>
