@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bridge call logger</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
+ h1{font-size:16px}p{font-size:12px;color:#666}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+ button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+ .warn{color:#b23;font-size:11px}
+ .big{height:160vh;background:linear-gradient(#fff,#eee)}
+</style>
+</head>
+<body>
+<h1>Meta IAB — bridge call logger (benign, observe only)</h1>
+<p>Hooks <code>__call_iabjs_unified_bridge</code> + the native-&gt;page callbacks and LOGS every call
+Instagram's own injected scripts make — revealing the REAL method names &amp; payload shapes. It does
+NOT initiate any native call itself. Interact (scroll/tap) to make IG use its bridge.</p>
+
+<pre id="log"></pre>
+<button onclick="interact()">simulate interaction (scroll/focus/resize)</button>
+<p>scroll this long area to trigger IG bridge usage:</p>
+<div class="big"></div>
+<p class="warn">Observe-only. We do NOT call unknown handlers; we only log what IG already calls.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var L=g('log'); function log(m){ L.textContent += m + '\n'; }
+
+log('origin='+location.origin+' IG='+/Instagram/i.test(navigator.userAgent));
+
+// 1) hook the unified bridge dispatcher — captures method + nonce + payload of every call
+try{
+  if(typeof window.__call_iabjs_unified_bridge==='function'){
+    var orig = window.__call_iabjs_unified_bridge;
+    window.__call_iabjs_unified_bridge = function(method, nonce, payload){
+      try{ log('BRIDGE CALL  method='+method+'  nonce='+nonce+'  payload='+safe(payload)); }catch(e){ log('log err '+e); }
+      try{ return orig.apply(this, arguments); }catch(e){ log('orig err '+e); }
+    };
+    log('hooked __call_iabjs_unified_bridge');
+  } else log('__call_iabjs_unified_bridge not a function');
+}catch(e){ log('hook1 err '+e); }
+
+// 2) hook native->page callbacks
+['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(name){
+  try{
+    if(typeof window[name]==='function'){
+      var o=window[name];
+      window[name]=function(){ try{ log('CALLBACK '+name+' <= '+safe([].slice.call(arguments))); }catch(e){} try{return o.apply(this,arguments);}catch(e){ log(name+' orig err '+e); } };
+      log('hooked '+name);
+    }
+  }catch(e){ log('hook '+name+' err '+e); }
+});
+
+// 3) try to observe messageHandlers access via a Proxy (if the engine allows reassigning)
+try{
+  if(window.webkit && window.webkit.messageHandlers){
+    var realMH = window.webkit.messageHandlers;
+    var prox = new Proxy(realMH, { get:function(t,p){ try{ if(typeof p==='string') log('messageHandlers.get -> "'+p+'"'); }catch(e){} return t[p]; } });
+    try{ Object.defineProperty(window.webkit, 'messageHandlers', { get:function(){ return prox; }, configurable:true }); log('proxied messageHandlers (will log name lookups)'); }
+    catch(e){ log('cannot redefine messageHandlers: '+e); }
+  }
+}catch(e){ log('proxy err '+e); }
+
+function safe(x){ try{ return JSON.stringify(x).slice(0,500);}catch(e){ try{return String(x).slice(0,300);}catch(_){return '(unser)';} } }
+function interact(){ try{ window.scrollTo(0,300); window.dispatchEvent(new Event('resize')); document.body.click(); log('dispatched scroll/resize/click'); }catch(e){ log('interact err '+e); } }
+</script>
+</body>
+</html>
