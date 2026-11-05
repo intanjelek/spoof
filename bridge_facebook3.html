@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bridge introspect</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.5;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:14px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ .warn{color:#b23;font-size:11px}
+ button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
+</style>
+</head>
+<body>
+<h1>Meta IAB bridge — introspection (benign, no native calls)</h1>
+<p style="font-size:12px;color:#666">Reads the injected bridge definitions via toString()/keys to
+map the API. It does NOT call any native bridge. Open inside the Instagram/Facebook in-app browser.</p>
+
+<h2>__iabjs (structure)</h2><pre id="iabjs"></pre>
+<h2>__call_iabjs_unified_bridge (source)</h2><pre id="unified"></pre>
+<h2>_AutofillCallbackHandler (source)</h2><pre id="autofill"></pre>
+<h2>__IABAutofill* globals</h2><pre id="afglobals"></pre>
+<h2>_pcmBridgeCallbackHandler (source)</h2><pre id="pcm"></pre>
+<h2>innerFramePageLocale + browserDeclutter + _META</h2><pre id="misc"></pre>
+<h2>nonces (already page-readable)</h2><pre id="nonces"></pre>
+
+<button onclick="run()">re-scan</button>
+<p class="warn">Introspection only. Do NOT call unknown bridges yet — some trigger native actions / autofill.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+function src(fn){ try{ return (typeof fn==='function') ? fn.toString() : '(type '+typeof fn+')'; }catch(e){ return '(err '+e+')'; } }
+function keys(o){ try{ return Object.getOwnPropertyNames(o).join(', '); }catch(e){ return '(err '+e+')'; } }
+function deep(o,depth){ try{
+  if(o===null||typeof o!=='object') return String(o);
+  if(depth<=0) return '{…}';
+  var out={};
+  Object.getOwnPropertyNames(o).forEach(function(k){ try{ var v=o[k]; out[k]= (typeof v==='function')? ('fn:'+(v.name||'')+' ['+(v.toString().slice(0,80).replace(/\n/g,' '))+'…]') : (typeof v==='ob
+ject'&&v? deep(v,depth-1) : v); }catch(e){ out[k]='(err)'; } });
+  return out;
+}catch(e){ return '(err '+e+')'; } }
+
+function run(){
+  g('iabjs').textContent = (typeof window.__iabjs!=='undefined')
+    ? 'keys: '+keys(window.__iabjs)+'\n\n'+JSON.stringify(deep(window.__iabjs,3),null,1)
+    : '(absent)';
+  g('unified').textContent = (typeof window.__call_iabjs_unified_bridge!=='undefined')
+    ? src(window.__call_iabjs_unified_bridge) : '(absent)';
+  g('autofill').textContent = (typeof window._AutofillCallbackHandler!=='undefined')
+    ? src(window._AutofillCallbackHandler) : '(absent)';
+
+  var af=[]; for(var k in window){ try{ if(/autofill/i.test(k)){ af.push(k+' = '+(typeof window[k])+(typeof window[k]==='function'?' ['+window[k].toString().slice(0,100).replace(/\n/g,' ')+'…]':' =
+ '+String(window[k]).slice(0,80))); } }catch(e){} }
+  g('afglobals').textContent = af.length? af.join('\n') : '(none)';
+
+  g('pcm').textContent = (typeof window._pcmBridgeCallbackHandler!=='undefined')
+    ? src(window._pcmBridgeCallbackHandler) : '(absent)';
+
+  g('misc').textContent =
+    'innerFramePageLocale: '+src(window.innerFramePageLocale)+'\n\n'+
+    'browserDeclutter: '+(typeof window.browserDeclutter!=='undefined'? JSON.stringify(deep(window.browserDeclutter,2),null,1) : '(absent)')+'\n\n'+
+    '_META: '+(typeof window._META!=='undefined'? JSON.stringify(deep(window._META,2),null,1) : '(absent)');
+
+  var n=[]; ['__iabjs_unified_bridge_nonce','_PCMNonce','autofillWindowId'].forEach(function(k){ try{ if(typeof window[k]!=='undefined') n.push(k+' = '+String(window[k])); }catch(e){} });
+  g('nonces').textContent = n.join('\n');
+}
+run();
+</script>
+</body>
+</html>
