@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bridge call logger</title>
+<title>bridge logger v2</title>
 <style>
  body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:14px;line-height:1.45;color:#111}
- h1{font-size:16px}p{font-size:12px;color:#666}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}p{font-size:12px;color:#666}
  pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:8px;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-all}
  button{font-size:14px;padding:10px;width:100%;border:1px solid #dcdce2;border-radius:9px;background:#fff;margin:6px 0}
  .warn{color:#b23;font-size:11px}
@@ -14,58 +14,85 @@
 </style>
 </head>
 <body>
-<h1>Meta IAB — bridge call logger (benign, observe only)</h1>
-<p>Hooks <code>__call_iabjs_unified_bridge</code> + the native-&gt;page callbacks and LOGS every call
-Instagram's own injected scripts make — revealing the REAL method names &amp; payload shapes. It does
-NOT initiate any native call itself. Interact (scroll/tap) to make IG use its bridge.</p>
+<h1>Meta IAB — bridge logger v2 (safe, no Proxy)</h1>
+<p>Hooks the bridge dispatcher + native callbacks and LOGS what IG's own scripts call. No Proxy on
+messageHandlers (that caused the iOS hang). Observe-only — does not initiate native calls. Works on
+iOS &amp; Android in-app browsers. On ANDROID the unified bridge is usually LIVE
+(<code>window.iabjs_unified_bridge</code> present).</p>
 
-<pre id="log"></pre>
-<button onclick="interact()">simulate interaction (scroll/focus/resize)</button>
-<p>scroll this long area to trigger IG bridge usage:</p>
-<div class="big"></div>
-<p class="warn">Observe-only. We do NOT call unknown handlers; we only log what IG already calls.</p>
+<h2>environment + native bridge presence</h2><pre id="env"></pre>
+<h2>window.iabjs_unified_bridge (Android native bridge)</h2><pre id="aib"></pre>
+<h2>Android @JavascriptInterface-style globals (objects w/ methods)</h2><pre id="aidl"></pre>
+<h2>live log (bridge calls + callbacks)</h2><pre id="log"></pre>
+
+<button onclick="interact()">simulate interaction (scroll/tap/resize)</button>
+<p>scroll this long area to trigger IG bridge usage:</p><div class="big"></div>
+<p class="warn">Observe-only.</p>
 
 <script>
 function g(id){return document.getElementById(id);}
-var L=g('log'); function log(m){ L.textContent += m + '\n'; }
+var L=g('log'); function log(m){ try{ L.textContent += m + '\n'; }catch(e){} }
+function safe(x){ try{return JSON.stringify(x).slice(0,600);}catch(e){try{return String(x).slice(0,300);}catch(_){return '(unser)';}} }
+function keys(o){ try{return Object.getOwnPropertyNames(o).join(', ');}catch(e){return '(err '+e+')';} }
 
-log('origin='+location.origin+' IG='+/Instagram/i.test(navigator.userAgent));
-
-// 1) hook the unified bridge dispatcher — captures method + nonce + payload of every call
+// env
 try{
-  if(typeof window.__call_iabjs_unified_bridge==='function'){
-    var orig = window.__call_iabjs_unified_bridge;
-    window.__call_iabjs_unified_bridge = function(method, nonce, payload){
-      try{ log('BRIDGE CALL  method='+method+'  nonce='+nonce+'  payload='+safe(payload)); }catch(e){ log('log err '+e); }
-      try{ return orig.apply(this, arguments); }catch(e){ log('orig err '+e); }
-    };
-    log('hooked __call_iabjs_unified_bridge');
-  } else log('__call_iabjs_unified_bridge not a function');
+ g('env').textContent =
+  'UA='+navigator.userAgent+'\n'+
+  'IG='+/Instagram/i.test(navigator.userAgent)+'  FB='+/FBAN|FBAV|FB_IAB/i.test(navigator.userAgent)+'\n'+
+  'origin='+location.origin+'\n'+
+  'window.iabjs_unified_bridge = '+(typeof window.iabjs_unified_bridge)+'\n'+
+  'window.webkit.messageHandlers = '+((window.webkit&&window.webkit.messageHandlers)?'present':'absent')+'\n'+
+  '__call_iabjs_unified_bridge = '+(typeof window.__call_iabjs_unified_bridge)+'\n'+
+  'nonce = '+String(window.__iabjs_unified_bridge_nonce);
+}catch(e){ g('env').textContent='env err '+e; }
+
+// Android native bridge object
+try{
+ g('aib').textContent = (typeof window.iabjs_unified_bridge!=='undefined')
+   ? 'type='+typeof window.iabjs_unified_bridge+'\nmembers: '+keys(window.iabjs_unified_bridge)
+   : '(absent — likely iOS, bridge no-op)';
+}catch(e){ g('aib').textContent='err '+e; }
+
+// Android @JavascriptInterface globals: injected as window.X objects with native functions.
+try{
+ var out=[];
+ for(var k in window){ try{
+   var v=window[k];
+   if(v && typeof v==='object' && !(/^(window|document|location|navigator|history|screen|console)$/.test(k))){
+     var kn=''; try{kn=Object.getOwnPropertyNames(v).join(',');}catch(_){}
+     // native interface objects often have functions and a short member list
+     if(/bridge|iab|fb|native|interface|android|_i_|messenger|autofill|pcm/i.test(k) || /postMessage|callNative|invoke|exec/i.test(kn)){
+       out.push(k+' : object { '+kn.slice(0,200)+' }');
+     }
+   } else if(typeof v==='function' && /bridge|iab|native|exec|invoke/i.test(k)){
+     out.push(k+' : fn');
+   }
+ }catch(e){} }
+ g('aidl').textContent = out.length? out.join('\n') : '(none obvious)';
+}catch(e){ g('aidl').textContent='err '+e; }
+
+// Hook the dispatcher (captures real method names + payloads)
+try{
+ if(typeof window.__call_iabjs_unified_bridge==='function'){
+   var orig=window.__call_iabjs_unified_bridge;
+   window.__call_iabjs_unified_bridge=function(method,nonce,payload){
+     try{ log('BRIDGE CALL  method='+method+'  nonce='+nonce+'  payload='+safe(payload)); }catch(e){}
+     try{ return orig.apply(this,arguments); }catch(e){ log('orig err '+e); }
+   };
+   log('hooked __call_iabjs_unified_bridge');
+ } else log('__call_iabjs_unified_bridge not a function');
 }catch(e){ log('hook1 err '+e); }
 
-// 2) hook native->page callbacks
+// Hook native->page callbacks
 ['_AutofillCallbackHandler','_pcmBridgeCallbackHandler'].forEach(function(name){
-  try{
-    if(typeof window[name]==='function'){
-      var o=window[name];
-      window[name]=function(){ try{ log('CALLBACK '+name+' <= '+safe([].slice.call(arguments))); }catch(e){} try{return o.apply(this,arguments);}catch(e){ log(name+' orig err '+e); } };
-      log('hooked '+name);
-    }
-  }catch(e){ log('hook '+name+' err '+e); }
+ try{ if(typeof window[name]==='function'){ var o=window[name];
+   window[name]=function(){ try{ log('CALLBACK '+name+' <= '+safe([].slice.call(arguments))); }catch(e){} try{return o.apply(this,arguments);}catch(e){ log(name+' err '+e);} };
+   log('hooked '+name);
+ } }catch(e){}
 });
 
-// 3) try to observe messageHandlers access via a Proxy (if the engine allows reassigning)
-try{
-  if(window.webkit && window.webkit.messageHandlers){
-    var realMH = window.webkit.messageHandlers;
-    var prox = new Proxy(realMH, { get:function(t,p){ try{ if(typeof p==='string') log('messageHandlers.get -> "'+p+'"'); }catch(e){} return t[p]; } });
-    try{ Object.defineProperty(window.webkit, 'messageHandlers', { get:function(){ return prox; }, configurable:true }); log('proxied messageHandlers (will log name lookups)'); }
-    catch(e){ log('cannot redefine messageHandlers: '+e); }
-  }
-}catch(e){ log('proxy err '+e); }
-
-function safe(x){ try{ return JSON.stringify(x).slice(0,500);}catch(e){ try{return String(x).slice(0,300);}catch(_){return '(unser)';} } }
-function interact(){ try{ window.scrollTo(0,300); window.dispatchEvent(new Event('resize')); document.body.click(); log('dispatched scroll/resize/click'); }catch(e){ log('interact err '+e); } }
+function interact(){ try{ window.scrollTo(0,400); window.dispatchEvent(new Event('resize')); document.body.click(); log('dispatched scroll/resize/click'); }catch(e){ log('interact err '+e); } }
 </script>
 </body>
 </html>
