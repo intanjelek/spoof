@@ -93,24 +93,36 @@
         } else log('  (no window.webkit.messageHandlers — not an iOS WKWebView, or none exposed)');
       } catch(e){ log('  err ' + e); }
 
-      // 3) heuristic: any window prop that is an object/function with OWN native methods
-      log('\n-- heuristic: non-standard globals with native methods --');
+      // 3) DIFF vs a clean iframe baseline: anything on window NOT present in a fresh about:blank
+      //    iframe's window is injected (bridge / extension / page script), not a standard platform global.
+      log('\n-- injected globals (diff vs clean iframe baseline) --');
       let anyHeur = false;
-      let names = [];
-      try { names = Object.getOwnPropertyNames(window); } catch(e){}
-      names.forEach(function(name){
-        if (STD.has(name) || KNOWN.indexOf(name) !== -1) return;
-        let v; try { v = window[name]; } catch(e){ return; }
-        if (!v || (typeof v !== 'object' && typeof v !== 'function')) return;
-        // skip DOM elements (id-named globals) and standard constructors
-        try { if (v && v.nodeType) return; } catch(e){}
-        let nativeM = [];
-        // ONLY enumerable own native methods: injected @JavascriptInterface bridges expose enumerable methods;
-        // standard built-in constructors' static methods are non-enumerable -> correctly excluded.
-        try { for (const k in v) { if (!Object.prototype.hasOwnProperty.call(v, k)) continue; try { if (typeof v[k] === 'function' && isNative(v[k])) nativeM.push(k); } catch(e){} } } catch(e){}
-        if (nativeM.length) { anyHeur = true; log('  window.' + name + '  enumerable-native-methods: ' + nativeM.slice(0,30).join(', ') + '   <== REVIEW (injected bridge?)'); }
-      });
-      if (!anyHeur) log('  (none — typical for hardened browsers like Chrome/Safari)');
+      let baseNames = null;
+      try {
+        const ifr = document.createElement('iframe');
+        ifr.style.display = 'none'; ifr.src = 'about:blank';
+        document.body.appendChild(ifr);
+        baseNames = new Set(Object.getOwnPropertyNames(ifr.contentWindow));
+      } catch(e){ log('  iframe baseline failed: ' + e); }
+      if (baseNames) {
+        let names = [];
+        try { names = Object.getOwnPropertyNames(window); } catch(e){}
+        names.forEach(function(name){
+          if (baseNames.has(name)) return;                       // standard global -> skip
+          if (name === 'globalThis' || name === 'webkitStorageInfo') return;
+          let v; try { v = window[name]; } catch(e){ return; }
+          try { if (v && v.nodeType) return; } catch(e){}        // skip DOM elements (named by id)
+          const kind = typeof v;
+          let methods = [];
+          if (v && (kind === 'object' || kind === 'function')) {
+            try { for (const k in v) { try { if (typeof v[k] === 'function') methods.push(k + (isNative(v[k]) ? '·native' : '')); } catch(e){} } } catch(e){}
+          }
+          const nativeHit = methods.some(function(m){ return /·native$/.test(m); });
+          anyHeur = true;
+          log('  window.' + name + ' (' + kind + ')' + (methods.length ? '  methods: ' + methods.slice(0,30).join(', ') : '') + (nativeHit ? '   <== NATIVE BRIDGE?' : ''));
+        });
+      }
+      if (!anyHeur) log('  (none beyond baseline — clean, e.g. Chrome/Safari)');
 
       log('\n=== done. "native" methods on an object you did NOT create = an injected native bridge = Kindred-style attack surface. ===');
     }
