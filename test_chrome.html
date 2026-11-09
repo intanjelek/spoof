@@ -1,73 +1,119 @@
-<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chrome feature-injection recon</title>
+<title>Native bridge scanner</title>
 <style>
- body{max-width:760px;margin:28px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
+ body{max-width:820px;margin:24px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
  button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
- pre{min-height:12em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
+ pre{min-height:16em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
  .warn{color:#b23;font-size:12px}
+ h1{font-size:17px}
 </style>
 </head>
 <body>
   <main id="main">
-    <h1>Chrome feature-injection recon (benign)</h1>
-    <p class="warn">Does Chrome expose any feature bridge to page JS, and can it be raced cross-origin? Benign recon.</p>
-    <button id="scan" type="button">1 · scan this window for feature bridges/globals</button>
-    <button id="watch" type="button">2 · open child, watch 12s for injected bridge/DOM</button>
+    <h1>Native JS-bridge scanner (benign)</h1>
+    <p class="warn">Open in ANY browser / in-app browser / wallet DApp browser. Enumerates native bridges exposed to
+    page JS (the Kindred-style attack surface). Read-only: it only reads names/method lists, never calls a bridge method.</p>
+    <button id="scan" type="button">scan for exposed native bridges</button>
     <pre id="log" aria-live="polite"></pre>
   </main>
 
   <script>
   (() => {
     'use strict';
-    const params = new URLSearchParams(location.search);
-    if (params.has('bootstrap')) { document.querySelector('#main').innerHTML = '<h1>bootstrap</h1>'; return; }
-
     const output = document.querySelector('#log');
     const scanBtn = document.querySelector('#scan');
-    const watchBtn = document.querySelector('#watch');
+    function log(m){ output.textContent += m + '\n'; }
 
-    function log(message) { const t = new Date().toISOString().slice(11,23); output.textContent += '[' + t + '] ' + message + '\n'; }
-
-    const RE = /shop|coupon|price|cart|translate|autofill|assistant|lens|discount|gCrWeb|gcr/i;
-    const uaC = /Chrome\/([\d.]+)/.exec(navigator.userAgent);
-    log('UA Chrome=' + (uaC ? uaC[1] : 'no') + ' Samsung=' + /SamsungBrowser/.test(navigator.userAgent));
-    log('NOTE: real Chrome rarely exposes feature bridges to page JS. A NONE result is the expected answer, not a bug.');
-
-    function scan() {
-      const hits = [];
-      for (const k in window) { try { if (RE.test(k)) hits.push(k); } catch (e) {} }
-      ['chrome', '__gCrWeb', 'cr', 'gCrWeb'].forEach(function (n) { try { if (n in window && hits.indexOf(n) === -1) hits.push(n + '(present)'); } catch (e) {} });
-      log('scan hits: ' + (hits.join(', ') || '(none)'));
-      try { if ('chrome' in window) log('window.chrome keys: ' + (Object.keys(window.chrome || {}).join(', ') || '(empty — normal)')); } catch (e) {}
+    // native function? (injected @JavascriptInterface / WKWebView methods report [native code])
+    function isNative(fn){ try { return typeof fn === 'function' && /\[native code\]/.test(Function.prototype.toString.call(fn)); } catch(e){ return false; } }
+    function ownMethods(obj){
+      const out = [];
+      try { for (const k of Object.getOwnPropertyNames(obj)) { try { if (typeof obj[k] === 'function') out.push(k + (isNative(obj[k]) ? '·native' : '')); } catch(e){} } } catch(e){}
+      try { for (const k in obj) { try { if (typeof obj[k] === 'function' && out.indexOf(k + '·native') === -1 && out.indexOf(k) === -1) out.push(k + (isNative(obj[k]) ? '·native' : '') + '(inh)')
+; } catch(e){} } } catch(e){}
+      return out;
     }
 
-    function watch() {
-      const w = open('about:blank#shopping', '_blank');
-      if (!w) { log('popup blocked — allow popups'); return; }
-      log('opened child; watching for injected bridge/DOM…');
-      const t0 = performance.now();
-      const base = {};
-      let found = false;
-      try { for (const k in w) base[k] = 1; } catch (e) {}
-      const iv = setInterval(function () {
-        const dt = Math.round(performance.now() - t0);
-        try {
-          for (const k in w) { if (!base[k]) { base[k] = 1; const hit = RE.test(k); log('+' + dt + 'ms new global: ' + k + (hit ? '  <== MATCH' : '')); if (hit) found = true; } }
-          const root = w.document && w.document.documentElement;
-          const html = root ? root.innerHTML : '';
-          if (html && RE.test(html)) { found = true; log('+' + dt + 'ms DOM match in child'); }
-        } catch (e) { log('+' + dt + 'ms child unreadable (' + e + ')'); clearInterval(iv); return; }
-        if (dt > 12000) { clearInterval(iv); log('watch ended. injected page-context bridge: ' + (found ? 'YES — investigate' : 'NONE (expected for Chrome)')); try { w.close(); } catch (e) {} }
-      }, 80);
+    // KNOWN bridge/provider names (high confidence if present)
+    const KNOWN = [
+      // crypto wallet providers
+      'ethereum','solana','web3','BinanceChain','tronWeb','tron','phantom','coinbaseWalletExtension','keplr','cardano','aptos','martian',
+      // WKWebView / RN / hybrid bridges
+      'webkit','ReactNativeWebView','flutter_inappwebview','Capacitor','cordova','Ionic','DartBridge','__nativeBridge','nativeBridge','JSBridge','jsBridge','external',
+      // Samsung / OEM / shopping / telemetry
+      'KindredWebInterface','SBrowser','samsung','__gCrWeb','gCrWeb','YandexBridge','yandex','UCBrowser','ucweb','MiuiBrowser','MiBrowser','HuaweiBridge','hbrowser','operaBridge','opr',
+      // Meta IAB
+      'iabjs_unified_bridge','__call_iabjs_unified_bridge','_AutofillCallbackHandler',
+      // generic
+      'Android','AndroidBridge','nativeApp','AppBridge','mobileBridge','__bridge','bridge','NativeInterface'
+    ];
+
+    // standard globals to skip in the heuristic pass
+    const STD = new Set(['window','self','document','location','navigator','history','screen','frames','parent','top','opener',
+      'localStorage','sessionStorage','indexedDB','crypto','performance','console','customElements','visualViewport',
+      'speechSynthesis','caches','cookieStore','scheduler','trustedTypes','clientInformation','styleMedia','applicationCache']);
+
+    function scan(){
+      output.textContent = '';
+      log('=== native bridge scan ===');
+      log('UA: ' + navigator.userAgent);
+      log('origin: ' + location.origin + '\n');
+
+      // 1) known names
+      log('-- known bridge/provider names --');
+      let anyKnown = false;
+      KNOWN.forEach(function(n){
+        let v; try { v = window[n]; } catch(e){ return; }
+        if (v === undefined || v === null) return;
+        anyKnown = true;
+        let extra = '';
+        if (n === 'ethereum' && typeof v === 'object') { extra = ' [isMetaMask=' + v.isMetaMask + ' isTrust=' + v.isTrust + ' isCoinbase=' + v.isCoinbaseWallet + ']'; }
+        const methods = (typeof v === 'object' || typeof v === 'function') ? ownMethods(v) : [];
+        log('  ' + n + ' = ' + (typeof v) + extra + (methods.length ? '  methods: ' + methods.slice(0,40).join(', ') : ''));
+      });
+      if (!anyKnown) log('  (none)');
+
+      // 2) webkit.messageHandlers (iOS WKWebView bridges)
+      log('\n-- webkit.messageHandlers (iOS) --');
+      try {
+        if (window.webkit && window.webkit.messageHandlers) {
+          let keys = [];
+          try { keys = Object.keys(window.webkit.messageHandlers); } catch(e){}
+          if (keys.length) log('  handlers: ' + keys.join(', '));
+          else {
+            // keys often non-enumerable; probe common handler names
+            const probes = ['iabjs_idle_callback','BrowserDeclutterJS','IABInnerFrameJS','KindredWebInterface','setPaymentAutofillValueInAllFramesForIABIOS','nativeBridge','jsBridge','logging'];
+            const found = probes.filter(function(p){ try { return typeof window.webkit.messageHandlers[p] !== 'undefined'; } catch(e){ return false; } });
+            log('  present (keys not enumerable). probed hits: ' + (found.join(', ') || '(none of the common names)'));
+          }
+        } else log('  (no window.webkit.messageHandlers — not an iOS WKWebView, or none exposed)');
+      } catch(e){ log('  err ' + e); }
+
+      // 3) heuristic: any window prop that is an object/function with OWN native methods
+      log('\n-- heuristic: non-standard globals with native methods --');
+      let anyHeur = false;
+      let names = [];
+      try { names = Object.getOwnPropertyNames(window); } catch(e){}
+      names.forEach(function(name){
+        if (STD.has(name) || KNOWN.indexOf(name) !== -1) return;
+        let v; try { v = window[name]; } catch(e){ return; }
+        if (!v || (typeof v !== 'object' && typeof v !== 'function')) return;
+        // skip DOM elements (id-named globals) and standard constructors
+        try { if (v && v.nodeType) return; } catch(e){}
+        let nativeM = [];
+        try { for (const k of Object.getOwnPropertyNames(v)) { try { if (typeof v[k] === 'function' && isNative(v[k])) nativeM.push(k); } catch(e){} } } catch(e){}
+        if (nativeM.length) { anyHeur = true; log('  window.' + name + '  native-methods: ' + nativeM.slice(0,30).join(', ')); }
+      });
+      if (!anyHeur) log('  (none — typical for hardened browsers like Chrome/Safari)');
+
+      log('\n=== done. "native" methods on an object you did NOT create = an injected native bridge = Kindred-style attack surface. ===');
     }
 
     scanBtn.addEventListener('click', scan);
-    watchBtn.addEventListener('click', watch);
-    log('ready — tap button 1 or 2');
+    log('ready — tap the button');
   })();
   </script>
 </body>
