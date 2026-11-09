@@ -1,0 +1,90 @@
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chrome feature-injection + TOCTOU recon</title>
+<style>
+ body{max-width:760px;margin:28px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
+ button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
+ input{width:100%;padding:9px;font:inherit;border:1px solid #ccc;border-radius:6px;margin:4px 0}
+ pre{min-height:12em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
+ .warn{color:#b23;font-size:12px}
+ #banner{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:8px;font-weight:700;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<h1>Chrome — feature-injection + TOCTOU recon (porting the Kindred logic)</h1>
+<p class="warn">Benign recon. Checks whether Chrome exposes ANY feature bridge to the page JS context, and whether an
+injected feature (e.g. Translate) can be raced into a different origin. No exploitation. Own build.</p>
+
+<p>bridge-name patterns to watch (regex, case-insensitive):</p>
+<input id="pat" value="shop|coupon|price|cart|translate|autofill|assistant|lens|discount|cr_|gcr|__gCrWeb|chrome(?!$)">
+<p>child trigger URL (Kindred-analog allowlist-confusion attempt)</p>
+<input id="trig" value="about:blank#shopping">
+
+<button id="scan" type="button">1 · scan THIS window for exposed feature bridges/globals</button>
+<button id="watch" type="button">2 · open child + watch for injected bridge/DOM (12s)</button>
+<button id="toctou" type="button">3 · TOCTOU: open child, wait, navigate to victim, watch cross-origin</button>
+<input id="victim" value="https://raihanyasa2.github.io/samsung_kindred_uxss.html?role=victim">
+
+<pre id="log"></pre>
+
+<script>
+(() => {
+'use strict';
+const out=document.getElementById('log');
+function log(m){ const t=new Date().toISOString().slice(11,23); out.textContent+=`[${t}] ${m}\n`; }
+function pat(){ try{ return new RegExp(document.getElementById('pat').value,'i'); }catch(e){ return /shop|translate|price/i; } }
+
+const uaC=/Chrome\/([\d.]+)/.exec(navigator.userAgent), uaS=/SamsungBrowser/.test(navigator.userAgent);
+log('UA Chrome='+(uaC?uaC[1]:'no')+' Samsung='+uaS+' platform='+navigator.platform);
+log('NOTE: real Chrome rarely exposes feature bridges to page JS (uses internal IPC). A null result here is the expected answer, not a tooling failure.');
+
+// 1) scan current window for anything matching feature patterns
+document.getElementById('scan').addEventListener('click', () => {
+  const re=pat(); const hits=[];
+  for (const k in window){ try{ if(re.test(k)) hits.push(k); }catch(e){} }
+  // also known Chrome-internal injected objects
+  ['chrome','__gCrWeb','cr','gCrWeb'].forEach(n=>{ if(n in window && hits.indexOf(n)===-1) hits.push(n+' (present)'); });
+  log('scan hits: '+(hits.join(', ')||'(none)'));
+  if ('chrome' in window) { log('window.chrome keys: '+(Object.keys(window.chrome||{}).join(', ')||'(empty — normal for web pages)')); }
+});
+
+// 2) open a child (about:blank# inherits our origin -> readable) and watch for injected artifacts + timing
+function watchChild(w, label, ms){
+  const re=pat(), t0=performance.now(), base={}; let found=false;
+  try{ for(const k in w) base[k]=1; }catch(e){}
+  const iv=setInterval(() => {
+    try{
+      for(const k in w){ if(!base[k]){ base[k]=1; const hit=re.test(k);
+        log('+'+Math.round(performance.now()-t0)+'ms ['+label+'] new global: '+k+(hit?'  <== MATCH':'')); if(hit){found=true; flag(label+' global '+k);} } }
+      const root=w.document&&w.document.documentElement, html=root?root.innerHTML:'';
+      if(html&&re.test(html)){ found=true; const m=html.match(re); flag(label+' DOM "'+(m&&m[0])+'"'); log('+'+Math.round(performance.now()-t0)+'ms ['+label+'] DOM match'); }
+    }catch(e){ log('+'+Math.round(performance.now()-t0)+'ms ['+label+'] cross-origin/unreadable ('+e+')'); clearInterval(iv); return; }
+  }, 60);
+  setTimeout(()=>{ clearInterval(iv); log('['+label+'] watch ended. injected bridge in page context: '+(found?'YES':'NONE (expected for Chrome)')); }, ms||12000);
+}
+function flag(m){ const b=document.getElementById('banner'); b.style.display='block'; b.textContent='⚠ Chrome exposed a feature artifact to page JS: '+m+' — investigate as a Kindred-style injection
+ surface.'; log('*** '+m+' ***'); }
+
+document.getElementById('watch').addEventListener('click', () => {
+  const w=open(document.getElementById('trig').value||'about:blank#shopping','_blank');
+  if(!w){ log('popup blocked'); return; }
+  log('opened child; watching for Chrome-injected bridge/DOM…'); watchChild(w,'child',12000);
+});
+
+// 3) TOCTOU: open child, wait, navigate to victim origin, keep watching across the boundary
+document.getElementById('toctou').addEventListener('click', () => {
+  const trig=document.getElementById('trig').value||'about:blank#shopping';
+  const victim=document.getElementById('victim').value;
+  const w=open(trig,'_blank');
+  if(!w){ log('popup blocked'); return; }
+  log('TOCTOU: opened '+trig+'; watching, will navigate to victim in 800ms');
+  watchChild(w,'toctou',14000);
+  setTimeout(()=>{ try{ w.location.href=victim; log('navigated child to victim origin'); }catch(e){ log('nav err '+e);} }, 800);
+});
+})();
+</script>
+</body>
+</html>
