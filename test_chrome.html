@@ -110,8 +110,10 @@
         names.forEach(function(name){
           if (baseNames.has(name)) return;                       // standard global -> skip
           if (name === 'globalThis' || name === 'webkitStorageInfo') return;
+          if (/^\d+$/.test(name)) return;                        // skip frame indices (incl. our baseline iframe)
           let v; try { v = window[name]; } catch(e){ return; }
           try { if (v && v.nodeType) return; } catch(e){}        // skip DOM elements (named by id)
+          try { if (v && v.window === v) return; } catch(e){}    // skip Window objects (subframes)
           const kind = typeof v;
           let methods = [];
           if (v && (kind === 'object' || kind === 'function')) {
