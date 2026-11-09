@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -32,8 +33,7 @@
     function ownMethods(obj){
       const out = [];
       try { for (const k of Object.getOwnPropertyNames(obj)) { try { if (typeof obj[k] === 'function') out.push(k + (isNative(obj[k]) ? '·native' : '')); } catch(e){} } } catch(e){}
-      try { for (const k in obj) { try { if (typeof obj[k] === 'function' && out.indexOf(k + '·native') === -1 && out.indexOf(k) === -1) out.push(k + (isNative(obj[k]) ? '·native' : '') + '(inh)')
-; } catch(e){} } } catch(e){}
+      try { for (const k in obj) { try { if (typeof obj[k] === 'function' && out.indexOf(k + '·native') === -1 && out.indexOf(k) === -1) out.push(k + (isNative(obj[k]) ? '·native' : '') + '(inh)'); } catch(e){} } } catch(e){}
       return out;
     }
 
@@ -71,6 +71,7 @@
         anyKnown = true;
         let extra = '';
         if (n === 'ethereum' && typeof v === 'object') { extra = ' [isMetaMask=' + v.isMetaMask + ' isTrust=' + v.isTrust + ' isCoinbase=' + v.isCoinbaseWallet + ']'; }
+        if (n === 'external') { extra += ' (standard Chrome object — ignore AddSearchProvider/IsSearchProviderInstalled; only custom methods matter)'; }
         const methods = (typeof v === 'object' || typeof v === 'function') ? ownMethods(v) : [];
         log('  ' + n + ' = ' + (typeof v) + extra + (methods.length ? '  methods: ' + methods.slice(0,40).join(', ') : ''));
       });
@@ -104,8 +105,10 @@
         // skip DOM elements (id-named globals) and standard constructors
         try { if (v && v.nodeType) return; } catch(e){}
         let nativeM = [];
-        try { for (const k of Object.getOwnPropertyNames(v)) { try { if (typeof v[k] === 'function' && isNative(v[k])) nativeM.push(k); } catch(e){} } } catch(e){}
-        if (nativeM.length) { anyHeur = true; log('  window.' + name + '  native-methods: ' + nativeM.slice(0,30).join(', ')); }
+        // ONLY enumerable own native methods: injected @JavascriptInterface bridges expose enumerable methods;
+        // standard built-in constructors' static methods are non-enumerable -> correctly excluded.
+        try { for (const k in v) { if (!Object.prototype.hasOwnProperty.call(v, k)) continue; try { if (typeof v[k] === 'function' && isNative(v[k])) nativeM.push(k); } catch(e){} } } catch(e){}
+        if (nativeM.length) { anyHeur = true; log('  window.' + name + '  enumerable-native-methods: ' + nativeM.slice(0,30).join(', ') + '   <== REVIEW (injected bridge?)'); }
       });
       if (!anyHeur) log('  (none — typical for hardened browsers like Chrome/Safari)');
 
