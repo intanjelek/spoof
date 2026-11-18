@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hostname Rendering Test</title>
+<style>
+  :root{--bg:#0f1115;--fg:#e6e9ef;--dim:#8b949e;--line:#262b33;
+        --warn:#fbbf24;--cy:#22d3ee;--red:#b91c1c;--ok:#4ade80}
+  *{box-sizing:border-box}
+  body{margin:0;padding:16px;background:var(--bg);color:var(--fg);
+       font:15px/1.5 -apple-system,system-ui,sans-serif}
+  h1{font-size:17px;margin:0 0 4px}
+  p.s{color:var(--dim);font-size:13px;margin:0 0 14px}
+  .m{background:var(--red);padding:14px;border-radius:10px;text-align:center;
+     margin-bottom:16px}
+  .m b{color:#fff;font-size:17px;display:block;margin-bottom:4px}
+  .m span{font-size:12px;color:#fff;opacity:.9}
+
+  fieldset{border:1px solid var(--line);border-radius:10px;margin:0 0 16px;padding:12px}
+  legend{font:600 11px system-ui;color:var(--dim);letter-spacing:1px;padding:0 6px}
+  label{display:block;font-size:12px;color:var(--dim);margin:8px 0 4px}
+  input,select{width:100%;padding:9px;border-radius:8px;border:1px solid var(--line);
+       background:#161b22;color:var(--fg);font:13px ui-monospace,monospace}
+  .row{display:flex;gap:8px}
+  .row>div{flex:1}
+  .resolved{margin-top:10px;padding:9px;border-radius:8px;background:#11161c;
+            border:1px solid var(--line);font:11px/1.5 ui-monospace,monospace;
+            color:var(--cy);word-break:break-all}
+  .bad{color:#f87171}
+
+  a.t{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);
+      border-radius:10px;padding:14px;margin-bottom:8px;background:#13171d}
+  a.t.done{border-color:#2f5f2f;background:#141b14}
+  .id{font-size:11px;letter-spacing:1px;color:var(--warn);font-weight:700}
+  .q{font-size:14px;margin:4px 0 8px}
+  .u{font:11px/1.45 ui-monospace,monospace;color:var(--cy);word-break:break-all}
+  .h{font-size:12px;color:var(--dim);margin-top:7px}
+  .case{margin-bottom:14px}
+  .case select{margin-top:-2px}
+
+  button{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;
+         background:#1c2128;color:var(--fg);font-size:14px;margin-top:8px}
+  button.go{background:#0e7490;border-color:#0e7490;font-weight:600}
+  #out{margin-top:12px;padding:12px;border-radius:8px;background:#11161c;
+       border:1px solid var(--line);font:10px/1.6 ui-monospace,monospace;
+       color:var(--dim);white-space:pre;overflow-x:auto}
+  .tally{font-size:12px;color:var(--dim);margin-top:8px}
+  .tally b{color:var(--ok)}
+</style>
+</head>
+<body>
+
+<div class="m"><b>ATTACKER-CONTROLLED CONTENT</b>
+<span>Every host below is under my control. Research marker only; nothing is collected.</span></div>
+
+<h1>Hostname Rendering Test</h1>
+<p class="s">All of these commit normally &mdash; no timing, no pending navigation.
+The only observation is the string the URL bar draws. Tap a case, read the bar,
+go back, record what you saw.</p>
+
+<fieldset>
+<legend>BASE HOST</legend>
+
+<label for="base">An IP (uses nip.io) or a domain whose wildcard you control</label>
+<input id="base" value="185.199.108.153" spellcheck="false" autocapitalize="off">
+
+<label for="trusted">Label to imitate &mdash; set this to a neutral name to measure
+the elision threshold over plain HTTP without a phishing filter rewriting the
+response</label>
+<input id="trusted" value="www.example.com" spellcheck="false" autocapitalize="off">
+
+<div class="row">
+  <div>
+    <label for="scheme">scheme</label>
+    <select id="scheme">
+      <option value="http">http</option>
+      <option value="https">https</option>
+    </select>
+  </div>
+  <div>
+    <label for="port">port (blank = default)</label>
+    <input id="port" value="" spellcheck="false" inputmode="numeric">
+  </div>
+</div>
+
+<div class="resolved" id="resolved"></div>
+</fieldset>
+
+<div class="what">
+  <b>Two passes.</b><br>
+  <b>1 &mdash; measure.</b> Keep the imitated label neutral and run over
+  <code>http</code>. This locates the elision threshold and the www. behaviour
+  with no setup at all.<br><br>
+  <b>2 &mdash; evidence.</b> Only for the final R1/R2 screenshots, set the
+  imitated label to the real brand and serve it over <code>https</code> from a
+  host you control. Plain HTTP to a brand-lookalike hostname gets its response
+  body replaced by a national phishing filter, so the screenshot would show the
+  filter's page instead of yours. Under TLS the filter sees only SNI and cannot
+  substitute content. Record such a case as <code>ISP-BLOCK</code> and retry it
+  over https.
+</div>
+
+<div id="cases"></div>
+
+<fieldset>
+<legend>RESULTS</legend>
+<div class="tally" id="tally"></div>
+<button onclick="copyOut()">copy the table</button>
+<button onclick="wipe()">clear recorded results</button>
+<div id="out"></div>
+</fieldset>
+
+<script>
+var K = 'elision_verdicts_v1';
+
+var VERDICTS = [
+  ['', '— what did the URL bar show? —'],
+  ['ELIDED-RIGHT', 'starts with google.com, real host cut off — FINDING'],
+  ['FULL', 'whole hostname visible — correct'],
+  ['ELIDED-LEFT', 'elided from the left (… at the start) — correct'],
+  ['ETLD-SHOWN', 'only the registrable domain shown — correct'],
+  ['PUNYCODE', 'shown as xn-- — correct'],
+  ['READABLE-IDN', 'readable lookalike text — FINDING'],
+  ['HOST-GONE', 'host scrolled out of view — FINDING'],
+  ['NO-LOAD', 'page did not load, nothing rendered'],
+  ['ISP-BLOCK', 'a filter/block page, not my content — retest over https']
+];
+
+function pad(n) { return new Array(n + 1).join('a'); }
+
+// Cyrillic lookalike of the imitated label, and its fullwidth form.
+function homograph(t) {
+  return t.replace(/^www\./, '').replace(/o/g, 'о');
+}
+function fullwidth(t) {
+  return t.replace(/^www\./, '').replace(/[!-~]/g, function (ch) {
+    return ch === '.' ? ch : String.fromCharCode(ch.charCodeAt(0) + 0xFEE0);
+  });
+}
+
+// [id, description, prefix in front of the base, path, hint]
+// Prefix '' means the base host alone. Path '' means '/'.
+function buildCases() {
+  var T = (document.getElementById('trusted').value.trim() || 'www.example.com')
+            .replace(/^\.+|\.+$/g, '');
+  var HOMOGRAPH = homograph(T);
+  var FULLWIDTH = fullwidth(T);
+  var bare = T.replace(/^www\./, '');
+  return [
+  ['C0', 'Control — plain host, nothing prepended',
+   '', '', 'Baseline. Note exactly how this renders.'],
+  ['C1', 'Imitated name as the left-hand label, no padding',
+   T, '',
+   'Does this still fit in full? If yes, elision starts between C1 and the T cases.'],
+
+  ['R1', 'PLAUSIBLE — accounts.signin',
+   T + '.accounts.signin', '',
+   'Same mechanism as the T cases, but the visible string reads like a real URL.'],
+  ['R2', 'PLAUSIBLE — accounts.secure.login.verify',
+   T + '.accounts.secure.login.verify', '',
+   'Longer plausible chain. This is the form to put in the report.'],
+  ['R3', 'PLAUSIBLE — single hyphenated label',
+   T + '-accounts-signin-continue', '',
+   'One DNS label, so no dot appears mid-string to give it away.'],
+  ['R4', 'PLAUSIBLE — leading accounts., no www',
+   'accounts.' + bare + '.auth.session', '',
+   'Tests whether dropping www. changes what is shown first.'],
+
+  ['T05', 'Threshold — 5 chars of padding',
+   T + '.' + pad(5), '', 'Find the exact cutoff.'],
+  ['T10', 'Threshold — 10 chars', T + '.' + pad(10), '', ''],
+  ['T15', 'Threshold — 15 chars', T + '.' + pad(15), '', ''],
+  ['T20', 'Threshold — 20 chars', T + '.' + pad(20), '', ''],
+  ['T30', 'Threshold — 30 chars', T + '.' + pad(30), '',
+   'Already elided in the first run — confirm.'],
+  ['T60', 'Threshold — 60 chars', T + '.' + pad(60), '', ''],
+
+  ['W1', 'www. stripping — with www.',
+   'www.' + bare + '.' + pad(30), '',
+   'Compare the first characters shown with W2.'],
+  ['W2', 'www. stripping — without www.',
+   bare + '.' + pad(30), '',
+   'If W1 and W2 render identically, www. is being stripped before display.'],
+
+  ['C5', 'IDN homograph label (mixed script)',
+   HOMOGRAPH, '',
+   'Correct if the bar shows an xn-- form. Finding if it shows readable Cyrillic.'],
+  ['C6', 'Fullwidth forms of the imitated label',
+   FULLWIDTH, '',
+   'Correct if normalised or shown as xn--. Finding if shown as lookalike text.'],
+
+  ['C7', 'Long path after a short host',
+   '', new Array(151).join('b') + '/' + T + '/',
+   'Finding if the host itself scrolls out of the visible bar.']
+  ];
+}
+
+var CASES = [];
+
+var verdicts = {};
+try { verdicts = JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) {}
+
+function save() {
+  try { localStorage.setItem(K, JSON.stringify(verdicts)); } catch (e) {}
+}
+
+function el(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// An IPv4 literal becomes a nip.io name, which resolves at any depth for free.
+// Anything else is used as the suffix directly.
+function suffix() {
+  var b = el('base').value.trim().replace(/^\.+|\.+$/g, '');
+  if (!b) return null;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(b)) {
+    var ok = b.split('.').every(function (o) { return +o >= 0 && +o <= 255; });
+    if (!ok) return null;
+    return b + '.nip.io';
+  }
+  if (!/^[a-z0-9.-]+$/i.test(b)) return null;
+  return b;
+}
+
+function urlFor(prefix, path) {
+  var sfx = suffix();
+  if (!sfx) return null;
+  var host = prefix ? prefix + '.' + sfx : sfx;
+  var port = el('port').value.trim();
+  var authority = host + (port ? ':' + port : '');
+  return el('scheme').value + '://' + authority + '/' + (path || '');
+}
+
+function build() {
+  CASES = buildCases();
+  var sfx = suffix();
+  var r = el('resolved');
+  if (!sfx) {
+    r.innerHTML = '<span class="bad">Enter an IPv4 address or a hostname.</span>';
+    el('cases').innerHTML = '';
+    return;
+  }
+  r.textContent = 'base host = ' + sfx +
+    (/nip\.io$/.test(sfx) ? '   (nip.io resolves this to the IP you typed)' : '');
+
+  el('cases').innerHTML = CASES.map(function (c) {
+    var id = c[0], url = urlFor(c[2], c[3]);
+    var v = verdicts[id];
+    var opts = VERDICTS.map(function (o) {
+      return '<option value="' + o[0] + '"' +
+             (v === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+    }).join('');
+    return '<div class="case">' +
+      '<a class="t' + (v ? ' done' : '') + '" href="' + esc(url) + '">' +
+        '<div class="id">' + id + (v ? '  ✓ ' + esc(v) : '') + '</div>' +
+        '<div class="q">' + esc(c[1]) + '</div>' +
+        '<div class="u">' + esc(url) + '</div>' +
+        (c[4] ? '<div class="h">' + esc(c[4]) + '</div>' : '') +
+      '</a>' +
+      '<select onchange="rec(\'' + id + '\',this.value)">' + opts + '</select>' +
+    '</div>';
+  }).join('');
+
+  render();
+}
+
+function rec(id, v) {
+  if (v) verdicts[id] = v; else delete verdicts[id];
+  save();
+  build();
+}
+
+function render() {
+  var lines = ['| case | URL bar showed | requested hostname |',
+               '|---|---|---|'];
+  var n = 0, finds = 0;
+  CASES.forEach(function (c) {
+    var v = verdicts[c[0]];
+    if (!v) return;
+    n++;
+    if (/FINDING|ELIDED-RIGHT|READABLE-IDN|HOST-GONE/.test(v)) finds++;
+    var u = urlFor(c[2], c[3]);
+    var host = u;
+    try { host = new URL(u).host; } catch (e) {}
+    lines.push('| ' + c[0] + ' | ' + v + ' | `' + host + '` |');
+  });
+  el('out').textContent = n ? lines.join('\n') : 'nothing recorded yet';
+  el('tally').innerHTML = n + ' of ' + CASES.length + ' recorded, <b>' +
+    finds + '</b> showing a misleading string';
+}
+
+function copyOut() {
+  var t = el('out').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(t).then(function () {
+      el('tally').innerHTML += ' &mdash; copied';
+    }, function () {});
+  }
+}
+
+function wipe() {
+  verdicts = {};
+  save();
+  build();
+}
+
+el('base').addEventListener('input', build);
+el('trusted').addEventListener('input', build);
+el('port').addEventListener('input', build);
+el('scheme').addEventListener('change', build);
+build();
+</script>
+</body>
+</html>
