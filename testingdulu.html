@@ -1,139 +1,177 @@
-                        <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign in - Google Accounts</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .login-container {
-            background-color: #fff;
-            padding: 2.5rem;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px rgba(60, 64, 67, 0.15);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-            box-sizing: border-box; /* Ensure padding is included in width */
-        }
-        .input-field {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            margin-bottom: 1.25rem;
-            border: 1px solid #dadce0;
-            border-radius: 4px;
-            font-size: 1rem;
-            box-sizing: border-box;
-            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        }
-        .input-field:focus {
-            outline: none;
-            border-color: #1a73e8;
-            box-shadow: 0 0 0 1px #1a73e8;
-        }
-        .btn-primary {
-            background-color: #1a73e8;
-            color: #fff;
-            padding: 0.75rem 1.5rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s ease-in-out;
-            width: auto; /* Allow button to size based on content */
-            min-width: 90px; /* Ensure a minimum width */
-        }
-        .btn-primary:hover {
-            background-color: #1766d1;
-        }
-        .link-text {
-            color: #1a73e8;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.875rem;
-            transition: color 0.2s ease-in-out;
-        }
-        .link-text:hover {
-            color: #1766d1;
-            text-decoration: underline;
-        }
-        .message-box {
-            background-color: #e6f4ea;
-            color: #1e8449;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            text-align: left;
-            font-size: 0.875rem;
-            display: none; /* Hidden by default */
-        }
-        .message-box.error {
-            background-color: #fce8e6;
-            color: #d93025;
-        }
-        .flex-between {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            margin-top: 1.5rem;
-        }
-        .text-left {
-            text-align: left;
-        }
-        .text-right {
-            text-align: right;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>URL Display Probe</title>
+<style>
+  :root { --bg:#0f1115; --fg:#e6e9ef; --dim:#8b949e; --line:#262b33;
+          --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --cy:#22d3ee; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg);
+         font:15px/1.5 -apple-system,system-ui,sans-serif; }
+  h1 { font-size:17px; margin:0 0 4px; }
+  p.sub { color:var(--dim); font-size:13px; margin:0 0 14px; }
+  label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
+  input { width:100%; padding:9px; border-radius:8px; border:1px solid var(--line);
+          background:#161b22; color:var(--fg); font:13px ui-monospace,monospace; }
+  .case { border:1px solid var(--line); border-radius:9px; padding:12px;
+          margin-top:10px; background:#13171d; }
+  .cid { font-size:11px; letter-spacing:1px; color:var(--warn); font-weight:700; }
+  .what { font-size:12px; color:var(--dim); margin:2px 0 8px; }
+  .url { font:12px/1.5 ui-monospace,monospace; color:var(--cy);
+         word-break:break-all; margin-bottom:4px; }
+  .puny { font:11px/1.5 ui-monospace,monospace; color:var(--dim);
+          word-break:break-all; margin-bottom:8px; }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; }
+  button { padding:8px 12px; border:1px solid var(--line); border-radius:7px;
+           background:#1c2128; color:var(--fg); font-size:13px; }
+  button.go { background:#0e7490; border-color:#0e7490; font-weight:600; }
+  select { padding:8px; border-radius:7px; border:1px solid var(--line);
+           background:#1c2128; color:var(--fg); font-size:13px; flex:1; min-width:150px; }
+  #out { margin-top:18px; border-top:1px solid var(--line); padding-top:12px;
+         font:11px/1.6 ui-monospace,monospace; color:var(--dim);
+         white-space:pre-wrap; word-break:break-all; }
+  .note { background:#1a1207; border:1px solid #533; border-radius:8px;
+          padding:10px; font-size:12px; color:#d9b; margin-top:12px; }
+</style>
 </head>
 <body>
-    <div class="login-container">
-        <img src="https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png" alt="Google" class="mx-auto mb-6 w-24">
-        <h1 class="text-2xl font-normal mb-2">Sign in</h1>
-        <p class="text-base text-gray-600 mb-6">Use your Google Account</p>
 
-        <div id="messageBox" class="message-box"></div>
+<h1>URL Display Probe</h1>
+<p class="sub">Checks how the host app renders a hostname in its URL bar: truncation, IDN/punycode policy, userinfo stripping. The page does not need to load — the toolbar string is the whole observation.</p>
 
-        <form id="loginForm" action="javascript:document.body.innerHTML=('<h1>pwned')">
-            <input type="email" id="email" class="input-field" placeholder="Email or phone" required>
-            <input type="password" id="password" class="input-field" placeholder="Password" required>
+<label for="trusted">Domain to imitate</label>
+<input id="trusted" value="www.google.com" spellcheck="false">
 
-            <div class="text-left mb-6">
-                <a href="#" class="link-text">Forgot password?</a>
-            </div>
+<label for="mine">A host you control (for cases that must actually resolve)</label>
+<input id="mine" value="unoratorical-hershel-oxygenizable.ngrok-free.dev" spellcheck="false">
 
-            <p class="text-sm text-gray-600 text-left mb-6">
-                Not your computer? Use a private browsing window to sign in. <a href="#" class="link-text">Learn more</a>
-            </p>
+<button onclick="build()" style="width:100%;margin-top:12px" class="go">build cases</button>
 
-            <div class="flex-between">
-                <a href="#" class="link-text">Create account</a>
-                <button type="submit" class="btn-primary">Next</button>
-            </div>
-        </form>
-    </div>
+<div class="note">Cases T1/T2 need wildcard DNS on a domain you own to serve content. For <i>detection</i> they work without it — if the toolbar renders the crafted host before failing, the display flaw is already proven. Record what the toolbar shows even when the page errors.</div>
+
+<div id="cases"></div>
+<div id="out">results will appear here</div>
+
 <script>
+// Cyrillic / Greek / Latin-extended characters that render like ASCII.
+const CONFUSABLE = {
+  a:'а', c:'с', e:'е', o:'о', p:'р',
+  x:'х', y:'у', i:'і', s:'ѕ', j:'ј',
+  d:'ԁ', h:'һ', g:'ɡ', l:'ⅼ', n:'ո'
+};
+const FULLWIDTH = s => s.replace(/[!-~]/g,
+  ch => String.fromCharCode(ch.charCodeAt(0) + 0xFEE0));
 
-setInterval(()=>{
-open('https://google.com/csi','_self')
-},50);
+const results = [];
 
-setTimeout(()=>{
-location='google.com'
+function swapAll(label) {
+  return [...label].map(ch => CONFUSABLE[ch] || ch).join('');
+}
+function swapOne(label) {
+  for (const ch of label) if (CONFUSABLE[ch]) return label.replace(ch, CONFUSABLE[ch]);
+  return label;
+}
+// The URL parser does IDNA toASCII for us — no punycode implementation needed.
+function asciiForm(u) {
+  try { return new URL(u).hostname; } catch (e) { return '(unparseable)'; }
+}
 
-},500);
+function build() {
+  const trusted = document.getElementById('trusted').value.trim();
+  const mine    = document.getElementById('mine').value.trim();
+  if (!trusted || !mine) return;
 
+  const tLabel = trusted.split('.')[0] === 'www' ? trusted.split('.')[1] : trusted.split('.')[0];
+  const tRest  = trusted.slice(trusted.indexOf(tLabel) + tLabel.length);
+  const pad    = n => 'a'.repeat(n);
+  const ZW     = '\u200b';   // zero-width space
+  const RTL    = '\u202e';   // right-to-left override
+
+  const cases = [
+    { id:'T1', what:'Subdomain stuffing — trusted name as a left-hand label',
+      url:'https://' + trusted + '.' + mine + '/' },
+    { id:'T2a', what:'Stuffing + 30 chars of padding (tests end-truncation)',
+      url:'https://' + trusted + '.' + pad(30) + '.' + mine + '/' },
+    { id:'T2b', what:'Stuffing + 60 chars of padding',
+      url:'https://' + trusted + '.' + pad(60) + '.' + mine + '/' },
+    { id:'T2c', what:'Stuffing + 120 chars of padding',
+      url:'https://' + trusted + '.' + pad(60) + '.' + pad(60) + '.' + mine + '/' },
+    { id:'T3', what:'Userinfo — trusted name before @ (tests userinfo stripping)',
+      url:'https://' + trusted + '@' + mine + '/' },
+    { id:'T4', what:'Userinfo, percent-encoded @',
+      url:'https://' + trusted + '%40' + mine + '/' },
+    { id:'T5', what:'IDN homograph — every substitutable char swapped (mixed script)',
+      url:'https://' + swapAll(tLabel) + tRest + '/' },
+    { id:'T6', what:'IDN homograph — one char swapped only (weaker script signal)',
+      url:'https://' + swapOne(tLabel) + tRest + '/' },
+    { id:'T7', what:'Fullwidth forms of the trusted label',
+      url:'https://' + FULLWIDTH(tLabel) + tRest + '/' },
+    { id:'T8', what:'Zero-width space splitting your host (render test only)',
+      url:'https://' + trusted + ZW + '.' + mine + '/' },
+    { id:'T9', what:'RTL override before your host (render test only)',
+      url:'https://' + trusted + '.' + RTL + mine + '/' },
+    { id:'T10', what:'Path confusion — trusted name in the path',
+      url:'https://' + mine + '/' + trusted + '/accounts/signin' },
+    { id:'T11', what:'Long path pushing the host out of a full-URL display',
+      url:'https://' + mine + '/' + pad(140) + '/' + trusted + '/' }
+  ];
+
+  document.getElementById('cases').innerHTML = cases.map(c => `
+    <div class="case">
+      <div class="cid">${c.id}</div>
+      <div class="what">${c.what}</div>
+      <div class="url">${esc(c.url)}</div>
+      <div class="puny">parsed host: ${esc(asciiForm(c.url))}</div>
+      <div class="acts">
+        <button class="go" onclick="go('${esc(c.url)}')">open</button>
+        <select id="v_${c.id}">
+          <option value="">— what did the toolbar show? —</option>
+          <option value="TRUSTED (spoof)">showed the trusted domain — SPOOF</option>
+          <option value="ambiguous truncation">truncated, trusted part visible first</option>
+          <option value="my host">showed my real host — correct</option>
+          <option value="punycode xn--">showed punycode (xn--) — correct</option>
+          <option value="blank / about:blank">showed blank</option>
+          <option value="not rendered">never rendered (failed earlier)</option>
+        </select>
+        <button onclick="rec('${c.id}','${esc(c.url)}')">record</button>
+      </div>
+    </div>`).join('');
+  render();
+}
+
+function go(u) { window.open(u, '_blank'); }
+
+function rec(id, url) {
+  const v = document.getElementById('v_' + id).value;
+  if (!v) return;
+  const i = results.findIndex(r => r.id === id);
+  const row = { id, url, ascii: asciiForm(url), verdict: v };
+  if (i >= 0) results[i] = row; else results.push(row);
+  render();
+}
+
+function render() {
+  if (!results.length) { document.getElementById('out').textContent = 'no results recorded yet'; return; }
+  let t = '| case | toolbar showed | requested host | ASCII/punycode form |\n';
+  t += '|---|---|---|---|\n';
+  for (const r of results) {
+    let host = '(unparseable)';
+    try { host = decodeURI(new URL(r.url).host); } catch (e) {}
+    t += `| ${r.id} | ${r.verdict} | \`${host}\` | \`${r.ascii}\` |\n`;
+  }
+  const spoof = results.filter(r => /TRUSTED|ambiguous/.test(r.verdict));
+  t += `\n${results.length} recorded, ${spoof.length} showing a trusted or ambiguous string\n`;
+  document.getElementById('out').textContent = t;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+build();
 </script>
-
 </body>
 </html>
